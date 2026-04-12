@@ -6,7 +6,6 @@ from sqlmodel import select
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.models import TableBase
 
-from app.core.pagination import Cursor
 T = TypeVar('T', bound=TableBase)
 
 class Repository[T]:
@@ -17,7 +16,7 @@ class Repository[T]:
     def _select(self):
         return select(self._table_model).where(self._table_model.deleted == False)  # noqa: E712
 
-    def _list(self, offset: int = 0, limit: int = 100):
+    def _list(self, offset: int, limit: int):
         return self._select().offset(offset).limit(limit)
     
     def _get(self, id: UUID):
@@ -30,24 +29,9 @@ class Repository[T]:
         await self._session.refresh(model)
         return model
     
-    async def list(self, cursor: str | None, limit: int | None = None) -> tuple[str | None, Sequence[T]]:
-        if cursor:
-            decoded = Cursor.decode(cursor)
-            offset = decoded.offset
-            next_limit = limit if limit else decoded.limit
-        else:
-            offset = 0
-            next_limit = limit or 100
+    async def list(self, limit: int, offset: int = 0) -> Sequence[T]:
+        return (await self._session.exec(self._list(offset, limit))).all()
 
-        list_ = (await self._session.exec(self._list(offset, next_limit))).all()
-
-        if len(list_) >= next_limit:
-            next = Cursor(offset=offset + len(list_), limit=next_limit).encode()
-        else:
-            next = None
-        
-        return (next, list_)
-    
     async def find_by_id(self, id: UUID) -> T | None:
         return (await self._session.exec(self._get(id))).one_or_none()
     

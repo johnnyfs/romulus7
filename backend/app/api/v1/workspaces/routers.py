@@ -4,8 +4,8 @@ from fastapi import Depends, FastAPI, Query
 
 from app.api.v1.workspaces.models import WorkspaceRepository
 from app.api.v1.workspaces.schemas import WorkspaceCreateRequest, WorkspaceCreateResponse, WorkspaceDeleteResponse, WorkspaceListItem, WorkspaceListResponse
-from app.core.pagination import NextUrlBuilder
 
+from app.core.config import settings
 
 app = FastAPI()
 
@@ -19,14 +19,13 @@ async def create_workspace(
 
 @app.get("/")
 async def get_workspace(
-    cursor: str | None = Query(None),
-    limit: int | None = Query(None),
+    limit: int = Query(settings.DEFAULT_PAGE_SIZE, gt=0, le=settings.MAX_PAGE_SIZE),
+    offset: int = Query(0, ge=0),
     repository: WorkspaceRepository = Depends(WorkspaceRepository),
-    next_url_builder: NextUrlBuilder = Depends(NextUrlBuilder)
 ) -> WorkspaceListResponse:
-    next_cursor, models = await repository.list(cursor, limit)
+    models = await repository.list(limit, offset)
     items = [WorkspaceListItem(**model.model_dump()) for model in models]
-    return WorkspaceListResponse(items=items, next=next_url_builder.from_cursor(next_cursor), count=len(items))
+    return WorkspaceListResponse(items=items, count=len(items))
 
 @app.get("/{workspace_id}")
 async def get_workspace_by_id(

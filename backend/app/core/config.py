@@ -10,6 +10,9 @@ class Settings(BaseSettings):
 
     ECHO_SQL: bool = False
 
+    MAX_PAGE_SIZE: int = 100
+    DEFAULT_PAGE_SIZE: int = 20
+
     @property
     def DATABASE_URL(self):
         return f"postgresql+asyncpg://{self.DB_USER}:{self.DB_PASS}@{self.DB_HOST}:{self.DB_PORT}/{self.DB_NAME}"

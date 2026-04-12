@@ -20,7 +20,6 @@ T = TypeVar('T', bound=BaseListItem)
 class BaseListResponse[T](BaseModel):
     items: list[T]
     count: int
-    next: str | None
 
 class BaseDeleteResponse(BaseModel):
     id: UUID
