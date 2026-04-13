@@ -19,8 +19,8 @@ test-backend:
 test-worker:
 	uv run --project worker pytest tests/worker/acceptance
 
-dev-test-worker: dev-backend-services dev-backend-migrations
-	uv run --project worker pytest tests/worker/acceptance
+test-frontend:
+	cd frontend; pnpm exec playwright test
 
 dev-backend-services:
 	docker compose --file docker-compose.services.yaml --env-file .env up --wait -d
