@@ -22,11 +22,14 @@ BACKEND_ROOT = REPO_ROOT / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.api.v1.workers.routers import app as workers_app
 from app.api.v1.workspaces.routers import app as workspaces_app
 from app.core.db import get_session
 from app.main import app
 
 
+HEALTH_PATH = "/api/v1/health/"
+WORKERS_PATH = "/api/v1/workers/"
 WORKSPACES_PATH = "/api/v1/workspaces/"
 
 
@@ -66,6 +69,7 @@ async def client(
             yield session
 
     app.dependency_overrides[get_session] = override_get_session
+    workers_app.dependency_overrides[get_session] = override_get_session
     workspaces_app.dependency_overrides[get_session] = override_get_session
 
     async with AsyncClient(
@@ -75,6 +79,7 @@ async def client(
         yield test_client
 
     app.dependency_overrides.clear()
+    workers_app.dependency_overrides.clear()
     workspaces_app.dependency_overrides.clear()
 
 
@@ -88,3 +93,18 @@ async def create_workspace(
         return response.json()
 
     return _create_workspace
+
+
+@pytest_asyncio.fixture
+async def create_worker(
+    client: AsyncClient,
+) -> Callable[[str], Awaitable[dict[str, Any]]]:
+    async def _create_worker(url: str) -> dict[str, Any]:
+        response = await client.post(
+            WORKERS_PATH,
+            json={"url": url},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    return _create_worker

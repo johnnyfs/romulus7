@@ -7,6 +7,7 @@ from sqlmodel import SQLModel
 
 from alembic import context
 
+from app.api.v1.workers.models import Worker  # noqa: F401
 from app.api.v1.workspaces.models import Workspace  # noqa: F401
 
 # this is the Alembic Config object, which provides
