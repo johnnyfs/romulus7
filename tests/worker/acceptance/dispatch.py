@@ -9,6 +9,7 @@ import pytest
 from httpx import AsyncClient
 
 from app.main import app
+from common.events import DispatchEventType
 
 pytestmark = pytest.mark.asyncio
 
@@ -86,15 +87,14 @@ async def test_dispatch_posts_stdout_lines_as_events(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    captured_events: list[tuple[UUID, str, dict[str, object] | None]] = []
+    captured_events: list[tuple[UUID, str, dict[str, object]]] = []
 
-    async def fake_post_dispatch_event(_, dispatch_id: UUID, line: str) -> None:
-        callback = app.state.worker_state.callbacks.get(dispatch_id)
-        captured_events.append((dispatch_id, line, callback))
+    async def fake_post_dispatch_event(_, dispatch_id: UUID, event_type, payload) -> None:
+        captured_events.append((dispatch_id, str(event_type), payload.model_dump(mode="json")))
 
     async def wait_for_completion(dispatch_id: UUID) -> None:
         for _ in range(100):
-            if len(captured_events) == 2 and dispatch_id not in app.state.worker_state.command_tasks:
+            if len(captured_events) == 4 and dispatch_id not in app.state.worker_state.command_tasks:
                 return
 
             await asyncio.sleep(0.01)
@@ -133,18 +133,49 @@ async def test_dispatch_posts_stdout_lines_as_events(
     assert captured_events == [
         (
             dispatch_id,
-            "alpha",
+            str(DispatchEventType.COMMAND_STDOUT),
             {
-                "execution_id": "00000000-0000-0000-0000-000000000999",
-                "execution_name": "Alpha echo",
+                "kind": "command.stdout",
+                "line": "alpha",
+                "callback": {
+                    "execution_id": "00000000-0000-0000-0000-000000000999",
+                    "execution_name": "Alpha echo",
+                },
             },
         ),
         (
             dispatch_id,
-            "beta",
+            str(DispatchEventType.COMMAND_STDOUT),
             {
-                "execution_id": "00000000-0000-0000-0000-000000000999",
-                "execution_name": "Alpha echo",
+                "kind": "command.stdout",
+                "line": "beta",
+                "callback": {
+                    "execution_id": "00000000-0000-0000-0000-000000000999",
+                    "execution_name": "Alpha echo",
+                },
+            },
+        ),
+        (
+            dispatch_id,
+            str(DispatchEventType.COMMAND_EXIT),
+            {
+                "kind": "command.exit",
+                "exit_code": 0,
+                "callback": {
+                    "execution_id": "00000000-0000-0000-0000-000000000999",
+                    "execution_name": "Alpha echo",
+                },
+            },
+        ),
+        (
+            dispatch_id,
+            str(DispatchEventType.DISPATCH_TERMINATED),
+            {
+                "kind": "dispatch.terminated",
+                "callback": {
+                    "execution_id": "00000000-0000-0000-0000-000000000999",
+                    "execution_name": "Alpha echo",
+                },
             },
         ),
     ]
@@ -212,3 +243,49 @@ async def test_dispatch_supports_shell_redirection(
         / "proof.txt"
     )
     assert expected_file.read_text().strip() == "test"
+
+
+async def test_dispatch_keeps_workspace_contents_after_exit(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    async def wait_for_completion(dispatch_id: UUID) -> None:
+        for _ in range(100):
+            if dispatch_id not in app.state.worker_state.command_tasks:
+                return
+
+            await asyncio.sleep(0.01)
+
+        raise AssertionError("dispatch command did not finish before timeout")
+
+    monkeypatch.chdir(tmp_path)
+
+    response = await client.post(
+        DISPATCH_PATH,
+        json={
+            "sandbox_id": "00000000-0000-0000-0000-000000000123",
+            "working_directory": "shared/path",
+            "execution_spec": {
+                "kind": "command",
+                "command": "echo persisted > shared.txt",
+            },
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    dispatch_id = UUID(response.json()["id"])
+
+    await wait_for_completion(dispatch_id)
+
+    shared_dir = (
+        tmp_path
+        / ".workspaces"
+        / "00000000-0000-0000-0000-000000000123"
+        / "shared/path"
+    )
+    assert shared_dir.is_dir()
+    assert (shared_dir / "shared.txt").read_text().strip() == "persisted"
+    assert dispatch_id not in app.state.worker_state.commands
+    assert dispatch_id not in app.state.worker_state.command_tasks
+    assert dispatch_id not in app.state.worker_state.callbacks

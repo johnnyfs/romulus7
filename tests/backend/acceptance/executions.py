@@ -1,9 +1,13 @@
 from datetime import datetime
 from http import HTTPStatus
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from httpx import AsyncClient
+from sqlmodel import select
+
+from app.api.v1.dispatches.models import Dispatch
+from app.api.v1.events.models import Event
 
 pytestmark = pytest.mark.asyncio
 EXECUTIONS_PATH = "/api/v1/executions/"
@@ -252,3 +256,65 @@ async def test_execution_dispatch_validates_relative_working_directory(
     assert any(
         error["loc"][-1] == "working_directory" for error in response.json()["detail"]
     )
+
+
+async def test_execution_delete_cascades_to_dispatches_and_events(
+    client: AsyncClient,
+    create_execution,
+    create_worker,
+    session_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = await create_execution(
+        {
+            "name": "Alpha echo",
+            "spec": {"kind": "command", "command": "echo alpha"},
+        }
+    )
+    await create_worker("http://localhost:9000/")
+    worker_dispatch_id = str(uuid4())
+
+    async def fake_dispatch_to_worker(worker_url: str, payload: dict) -> dict:
+        return {"id": worker_dispatch_id, "process_id": 4242}
+
+    monkeypatch.setattr(
+        "app.api.v1.executions.routers.dispatch_to_worker",
+        fake_dispatch_to_worker,
+    )
+
+    dispatch_response = await client.post(
+        f"{EXECUTIONS_PATH}{execution['id']}/dispatch",
+        json={"sandbox_id": None, "working_directory": None},
+    )
+    assert dispatch_response.status_code == HTTPStatus.OK
+
+    event_response = await client.post(
+        "/api/v1/events/",
+        json={
+            "source_type": "dispatch",
+            "source_id": worker_dispatch_id,
+            "type": "command.stdout",
+            "payload": {"kind": "command.stdout", "line": "alpha"},
+        },
+    )
+    assert event_response.status_code == HTTPStatus.OK
+
+    delete_response = await client.delete(f"{EXECUTIONS_PATH}{execution['id']}")
+    assert delete_response.status_code == HTTPStatus.OK
+    assert delete_response.json() == {"id": execution["id"], "deleted": True}
+
+    events_response = await client.get(
+        "/api/v1/events/",
+        params={"source_type": "dispatch", "source_id": worker_dispatch_id, "limit": 100},
+    )
+    assert events_response.status_code == HTTPStatus.OK
+    assert events_response.json() == {"items": [], "count": 0}
+
+    async with session_factory() as session:
+        dispatch = (
+            await session.exec(select(Dispatch).where(Dispatch.id == UUID(worker_dispatch_id)))
+        ).one()
+        event = (await session.exec(select(Event).where(Event.source_id == UUID(worker_dispatch_id)))).one()
+
+    assert dispatch.deleted is True
+    assert event.deleted is True

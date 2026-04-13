@@ -10,6 +10,7 @@ from app.api.v1.events.notify_bus import EventNotification
 from app.api.v1.events.schemas import EventPayload
 from app.core.config import settings
 from app.core.db import get_session
+from app.core.filters import Filters
 from app.core.models import PydanticJSON
 from common.events import DispatchEventType, EventSourceType
 
@@ -30,6 +31,7 @@ class Event(SQLModel, table=True):
         sa_column=Column(Enum(DispatchEventType, native_enum=False), nullable=False)
     )
     payload: EventPayload = Field(sa_column=Column(PydanticJSON(EventPayload), nullable=False))
+    deleted: bool = False
 
 
 class EventRepository:
@@ -37,7 +39,7 @@ class EventRepository:
         self._session = session
 
     def _select(self):
-        return select(Event)
+        return select(Event).where(Event.deleted == False)  # noqa: E712
 
     def uses_database_notifications(self) -> bool:
         bind = self._session.get_bind()
@@ -76,6 +78,7 @@ class EventRepository:
         since: int | None = None,
         source_type: EventSourceType | None = None,
         source_id: UUID | None = None,
+        filters: Filters = None,
     ) -> Sequence[Event]:
         statement = self._select()
 
@@ -88,5 +91,19 @@ class EventRepository:
         if source_id is not None:
             statement = statement.where(Event.source_id == source_id)
 
+        if filters:
+            statement = filters.apply(statement, Event)
+
         statement = statement.order_by(Event.id).limit(limit or settings.DEFAULT_PAGE_SIZE)
         return (await self._session.exec(statement)).all()
+
+    async def delete_by_dispatch_id(self, dispatch_id: UUID) -> int:
+        statement = self._select().where(
+            (Event.source_type == EventSourceType.DISPATCH) & (Event.source_id == dispatch_id)
+        )
+        events = (await self._session.exec(statement)).all()
+        for event in events:
+            event.deleted = True
+
+        await self._session.commit()
+        return len(events)

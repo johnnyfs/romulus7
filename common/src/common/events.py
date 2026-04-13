@@ -10,6 +10,8 @@ class EventSourceType(StrEnum):
 
 class DispatchEventType(StrEnum):
     COMMAND_STDOUT = "command.stdout"
+    COMMAND_EXIT = "command.exit"
+    DISPATCH_TERMINATED = "dispatch.terminated"
 
 
 EventCallback = dict[str, Any]
@@ -21,4 +23,18 @@ class CommandStdoutEventPayload(BaseModel):
     callback: EventCallback | None = None
 
 
-EventPayload = Annotated[CommandStdoutEventPayload, Field(discriminator="kind")]
+class CommandExitEventPayload(BaseModel):
+    kind: Literal["command.exit"] = DispatchEventType.COMMAND_EXIT
+    exit_code: int
+    callback: EventCallback | None = None
+
+
+class DispatchTerminatedEventPayload(BaseModel):
+    kind: Literal["dispatch.terminated"] = DispatchEventType.DISPATCH_TERMINATED
+    callback: EventCallback | None = None
+
+
+EventPayload = Annotated[
+    CommandStdoutEventPayload | CommandExitEventPayload | DispatchTerminatedEventPayload,
+    Field(discriminator="kind"),
+]
