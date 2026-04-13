@@ -1,18 +1,10 @@
 from pathlib import PurePath
-from typing import Annotated, Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, field_validator
 
 from app.core.schemas import BaseDeleteResponse, BaseListItem, BaseListResponse, BaseModelResponse
-
-
-class CommandExecutionSpec(BaseModel):
-    kind: Literal["command"]
-    commands: list[str] = Field(min_length=1)
-
-
-ExecutionSpec = Annotated[CommandExecutionSpec, Field(discriminator="kind")]
+from common.execution import ExecutionSpec
 
 
 class ExecutionBase(BaseModel):

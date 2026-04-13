@@ -39,6 +39,18 @@ async def send_heartbeats(
         await asyncio.sleep(settings.WORKER_HEARTBEAT_SECONDS)
 
 
+async def stop_command_tasks(worker_state: WorkerState) -> None:
+    tasks = list(worker_state.command_tasks.values())
+    if not tasks:
+        return
+
+    for task in tasks:
+        task.cancel()
+
+    await asyncio.gather(*tasks, return_exceptions=True)
+    worker_state.command_tasks.clear()
+
+
 def stop_running_commands(worker_state: WorkerState) -> None:
     for process_id in worker_state.commands.values():
         try:
@@ -64,6 +76,7 @@ async def lifespan(app: FastAPI):
                 await heartbeat_task
 
             stop_running_commands(worker_state)
+            await stop_command_tasks(worker_state)
             worker_state.id = None
 
 

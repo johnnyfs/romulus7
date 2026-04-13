@@ -7,6 +7,7 @@ from sqlmodel import SQLModel
 
 from alembic import context
 
+from app.api.v1.events.models import Event  # noqa: F401
 from app.api.v1.dispatches.models import Dispatch  # noqa: F401
 from app.api.v1.executions.models import Execution  # noqa: F401
 from app.api.v1.sandboxes.models import Sandbox  # noqa: F401

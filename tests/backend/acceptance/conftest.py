@@ -23,6 +23,7 @@ if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
 from app.api.v1.executions.routers import app as executions_app
+from app.api.v1.events.routers import app as events_app
 from app.api.v1.sandboxes.routers import app as sandboxes_app
 from app.api.v1.workers.routers import app as workers_app
 from app.api.v1.workspaces.routers import app as workspaces_app
@@ -30,6 +31,7 @@ from app.core.db import get_session
 from app.main import app
 
 
+EVENTS_PATH = "/api/v1/events/"
 EXECUTIONS_PATH = "/api/v1/executions/"
 HEALTH_PATH = "/api/v1/health/"
 SANDBOXES_PATH = "/api/v1/sandboxes/"
@@ -74,6 +76,7 @@ async def client(
 
     app.dependency_overrides[get_session] = override_get_session
     executions_app.dependency_overrides[get_session] = override_get_session
+    events_app.dependency_overrides[get_session] = override_get_session
     sandboxes_app.dependency_overrides[get_session] = override_get_session
     workers_app.dependency_overrides[get_session] = override_get_session
     workspaces_app.dependency_overrides[get_session] = override_get_session
@@ -86,6 +89,7 @@ async def client(
 
     app.dependency_overrides.clear()
     executions_app.dependency_overrides.clear()
+    events_app.dependency_overrides.clear()
     sandboxes_app.dependency_overrides.clear()
     workers_app.dependency_overrides.clear()
     workspaces_app.dependency_overrides.clear()
@@ -143,6 +147,21 @@ async def create_execution(
         return response.json()
 
     return _create_execution
+
+
+@pytest_asyncio.fixture
+async def create_event(
+    client: AsyncClient,
+) -> Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]:
+    async def _create_event(event: dict[str, Any]) -> dict[str, Any]:
+        response = await client.post(
+            EVENTS_PATH,
+            json=event,
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    return _create_event
 
 
 @pytest_asyncio.fixture

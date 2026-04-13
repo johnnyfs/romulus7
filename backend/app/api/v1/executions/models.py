@@ -1,9 +1,9 @@
 from sqlmodel import Column, Field
 
-from app.api.v1.executions.schemas import ExecutionSpec
 from app.core.db import get_session
 from app.core.models import PydanticJSON, TableBase
 from app.core.repositories import Repository
+from common.execution import ExecutionSpec
 from fastapi import Depends
 
 
