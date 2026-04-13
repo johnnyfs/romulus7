@@ -1,11 +1,10 @@
 /**
- * WorkspaceDetailPage — workspace detail with three-column layout.
+ * WorkspaceDetailPage — workspace detail with two-column layout.
  *
- * Left:   scrollable execution list (reuses VirtualList + useOffsetVirtualData)
+ * Left:   sidebar with inline create form + compact execution list
  * Middle: live activity viewer (SSE event stream)
- * Right:  empty placeholder
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useOffsetVirtualData } from "../components/virtual-list/useOffsetVirtualData";
 import { VirtualList } from "../components/virtual-list/VirtualList";
@@ -24,7 +23,12 @@ import type { Workspace } from "../api/workspaces";
 import styles from "./WorkspaceDetailPage.module.css";
 
 const PAGE_SIZE = 20;
-const ESTIMATED_ROW_HEIGHT = 76;
+const ESTIMATED_ROW_HEIGHT = 32;
+
+const EXECUTION_COLORS = [
+  "#2dd4bf", "#f97066", "#a78bfa", "#84cc16", "#f59e0b", "#e879a8",
+  "#38bdf8", "#f97316", "#34d399", "#f472b6", "#818cf8", "#fbbf24",
+];
 
 /* ------------------------------------------------------------------ */
 /*  Icons                                                              */
@@ -50,8 +54,8 @@ function BackArrow() {
 function PlayIcon() {
   return (
     <svg
-      width="14"
-      height="14"
+      width="12"
+      height="12"
       viewBox="0 0 16 16"
       fill="currentColor"
       stroke="none"
@@ -64,8 +68,8 @@ function PlayIcon() {
 function TrashIcon() {
   return (
     <svg
-      width="14"
-      height="14"
+      width="12"
+      height="12"
       viewBox="0 0 16 16"
       fill="none"
       stroke="currentColor"
@@ -83,19 +87,55 @@ function TrashIcon() {
 }
 
 /* ------------------------------------------------------------------ */
-/*  ExecutionCard                                                      */
+/*  Color helpers                                                      */
+/* ------------------------------------------------------------------ */
+
+function getExecutionColor(execution: Execution): string {
+  const stored = execution.metadata?.color;
+  if (typeof stored === "string" && stored.length > 0) return stored;
+  return "var(--accent)";
+}
+
+function pickNextColor(existingExecutions: Execution[]): string {
+  // Count how many executions use each color to round-robin.
+  const usedCounts = new Map<string, number>();
+  for (const ex of existingExecutions) {
+    const c = typeof ex.metadata?.color === "string" ? ex.metadata.color : null;
+    if (c) usedCounts.set(c, (usedCounts.get(c) ?? 0) + 1);
+  }
+  // Pick the least-used color from the palette.
+  let best = EXECUTION_COLORS[0];
+  let bestCount = Infinity;
+  for (const c of EXECUTION_COLORS) {
+    const count = usedCounts.get(c) ?? 0;
+    if (count < bestCount) {
+      best = c;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+/* ------------------------------------------------------------------ */
+/*  ExecutionCard (compact, expandable)                                 */
 /* ------------------------------------------------------------------ */
 
 function ExecutionCard({
   execution,
+  expanded,
+  onToggle,
   onDispatch,
   onDelete,
 }: {
   execution: Execution;
+  expanded: boolean;
+  onToggle: () => void;
   onDispatch: (execution: Execution) => void;
   onDelete: (id: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const color = getExecutionColor(execution);
+  const hasDispatch = execution.dispatch_id !== null;
 
   const handleCopyId = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -105,44 +145,60 @@ function ExecutionCard({
   };
 
   const shortId = execution.id.slice(0, 8);
-  const commandPreview = execution.spec.command.replace(/\s+/g, " ").trim();
-  const hasDispatch = execution.dispatch_id !== null;
 
   return (
-    <div className={styles.executionCard}>
-      <div className={styles.cardActions}>
-        <button
-          className={styles.cardActionButton}
-          onClick={() => onDispatch(execution)}
-          disabled={hasDispatch}
-          title={hasDispatch ? "Already dispatched" : "Dispatch execution"}
-          type="button"
+    <div>
+      <div className={styles.executionCard} onClick={onToggle}>
+        <span
+          className={styles.executionDot}
+          style={{ color: hasDispatch ? color : "var(--text)" }}
         >
-          <PlayIcon />
-        </button>
-        <button
-          className={`${styles.cardActionButton} ${styles.deleteCardButton}`}
-          onClick={() => onDelete(execution.id)}
-          title="Delete execution"
-          type="button"
-        >
-          <TrashIcon />
-        </button>
+          {"\u25CF"}
+        </span>
+        <span className={styles.executionLabel} title={execution.name}>
+          {execution.name}
+        </span>
+        <div className={styles.cardActions}>
+          <button
+            className={styles.cardActionButton}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDispatch(execution);
+            }}
+            disabled={hasDispatch}
+            title={hasDispatch ? "Already dispatched" : "Dispatch execution"}
+            type="button"
+          >
+            <PlayIcon />
+          </button>
+          <button
+            className={`${styles.cardActionButton} ${styles.deleteCardButton}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(execution.id);
+            }}
+            title="Delete execution"
+            type="button"
+          >
+            <TrashIcon />
+          </button>
+        </div>
       </div>
-      <p className={styles.executionType}>{execution.spec.kind}</p>
-      <p className={styles.executionName} title={execution.name}>
-        {execution.name}
-      </p>
-      <p className={styles.executionCommand} title={commandPreview}>
-        {commandPreview}
-      </p>
-      <span
-        className={styles.executionId}
-        onClick={handleCopyId}
-        title={copied ? "Copied!" : `Click to copy: ${execution.id}`}
-      >
-        {copied ? "Copied!" : shortId}
-      </span>
+      {expanded && (
+        <div className={styles.executionDetails}>
+          <p className={styles.executionType}>{execution.spec.kind}</p>
+          <pre className={styles.executionCommand}>
+            {execution.spec.command}
+          </pre>
+          <span
+            className={styles.executionId}
+            onClick={handleCopyId}
+            title={copied ? "Copied!" : `Click to copy: ${execution.id}`}
+          >
+            {copied ? "Copied!" : shortId}
+          </span>
+        </div>
+      )}
     </div>
   );
 }
@@ -157,11 +213,13 @@ function ExecutionPlaceholder() {
 
 function DispatchDialog({
   open,
+  execution,
   sandboxes,
   onClose,
   onDispatch,
 }: {
   open: boolean;
+  execution: Execution | null;
   sandboxes: Sandbox[];
   onClose: () => void;
   onDispatch: (sandboxId: string | null) => Promise<void>;
@@ -200,13 +258,15 @@ function DispatchDialog({
   return (
     <dialog ref={dialogRef} className={styles.dialog} onClose={onClose}>
       <form onSubmit={handleSubmit}>
-        <h3 className={styles.dialogTitle}>Dispatch execution</h3>
+        <h3 className={styles.dialogTitle}>
+          Dispatch: {execution?.name ?? "execution"}
+        </h3>
         <label className={styles.dialogLabel} htmlFor="dispatch-sandbox">
           Sandbox
         </label>
         <select
           id="dispatch-sandbox"
-          className={styles.formSelect}
+          className={styles.dialogSelect}
           value={sandboxId}
           onChange={(e) => setSandboxId(e.target.value)}
         >
@@ -240,14 +300,16 @@ function DispatchDialog({
 }
 
 /* ------------------------------------------------------------------ */
-/*  CreateExecutionForm                                                */
+/*  Inline create execution form                                       */
 /* ------------------------------------------------------------------ */
 
 function CreateExecutionForm({
   sandboxes,
+  allExecutions,
   onCreated,
 }: {
   sandboxes: Sandbox[];
+  allExecutions: Execution[];
   onCreated: () => void;
 }) {
   const [name, setName] = useState("");
@@ -265,12 +327,19 @@ function CreateExecutionForm({
     setSubmitting(true);
     setError("");
     try {
+      const color = pickNextColor(allExecutions);
       const execution = await createExecution({
         name: trimmedName,
         spec: { kind, command: trimmedCommand },
+        metadata: { color },
       });
       await dispatchExecution(execution.id, {
         sandbox_id: sandboxId || null,
+        callback: {
+          execution_id: execution.id,
+          execution_name: execution.name,
+          execution_color: color,
+        },
       });
       setName("");
       setCommandText("");
@@ -283,10 +352,8 @@ function CreateExecutionForm({
   };
 
   return (
-    <form onSubmit={handleSubmit}>
-      <h3 className={styles.formHeading}>New Execution</h3>
-
-      <div className={styles.formSection}>
+    <form className={styles.inlineForm} onSubmit={handleSubmit}>
+      <div className={styles.formRow}>
         <label className={styles.formLabel} htmlFor="exec-name">
           Name
         </label>
@@ -301,7 +368,7 @@ function CreateExecutionForm({
         />
       </div>
 
-      <div className={styles.formSection}>
+      <div className={styles.formRow}>
         <label className={styles.formLabel} htmlFor="exec-kind">
           Type
         </label>
@@ -315,7 +382,7 @@ function CreateExecutionForm({
         </select>
       </div>
 
-      <div className={styles.formSection}>
+      <div className={styles.formRow}>
         <label className={styles.formLabel} htmlFor="exec-commands">
           Command
         </label>
@@ -324,12 +391,12 @@ function CreateExecutionForm({
           className={styles.formTextarea}
           value={commandText}
           onChange={(e) => setCommandText(e.target.value)}
-          placeholder={"echo hello\nls -la\nprintf 'done\\n' > proof.txt"}
-          rows={6}
+          placeholder={"echo hello\nls -la"}
+          rows={4}
         />
       </div>
 
-      <div className={styles.formSection}>
+      <div className={styles.formRow}>
         <label className={styles.formLabel} htmlFor="exec-sandbox">
           Sandbox
         </label>
@@ -362,45 +429,6 @@ function CreateExecutionForm({
 }
 
 /* ------------------------------------------------------------------ */
-/*  CreateExecutionDialog                                              */
-/* ------------------------------------------------------------------ */
-
-function CreateExecutionDialog({
-  open,
-  sandboxes,
-  onClose,
-  onCreated,
-}: {
-  open: boolean;
-  sandboxes: Sandbox[];
-  onClose: () => void;
-  onCreated: () => void;
-}) {
-  const dialogRef = useRef<HTMLDialogElement>(null);
-
-  const prevOpen = useRef(false);
-  if (open !== prevOpen.current) {
-    prevOpen.current = open;
-    if (open) {
-      queueMicrotask(() => dialogRef.current?.showModal());
-    } else {
-      dialogRef.current?.close();
-    }
-  }
-
-  const handleCreated = () => {
-    onCreated();
-    onClose();
-  };
-
-  return (
-    <dialog ref={dialogRef} className={styles.dialog} onClose={onClose}>
-      <CreateExecutionForm sandboxes={sandboxes} onCreated={handleCreated} />
-    </dialog>
-  );
-}
-
-/* ------------------------------------------------------------------ */
 /*  Page                                                               */
 /* ------------------------------------------------------------------ */
 
@@ -410,9 +438,9 @@ export default function WorkspaceDetailPage() {
   const [workspace, setWorkspace] = useState<Workspace | null>(null);
   const [sandboxes, setSandboxes] = useState<Sandbox[]>([]);
   const [dispatchTarget, setDispatchTarget] = useState<Execution | null>(null);
-  const [createDialogOpen, setCreateDialogOpen] = useState(false);
-  const [executionNames, setExecutionNames] = useState<Map<string, string>>(
-    () => new Map(),
+  const [showForm, setShowForm] = useState(false);
+  const [expandedExecutions, setExpandedExecutions] = useState<Set<string>>(
+    new Set(),
   );
 
   useEffect(() => {
@@ -438,26 +466,6 @@ export default function WorkspaceDetailPage() {
     return () => controller.abort();
   }, []);
 
-  // Build dispatch_id → execution name lookup for the activity viewer.
-  useEffect(() => {
-    const controller = new AbortController();
-    fetchExecutionPage({ offset: 0, limit: 100, query: undefined as void, signal: controller.signal })
-      .then((result) => {
-        const names = new Map<string, string>();
-        for (const exec of result.items) {
-          if (exec.dispatch_id) {
-            names.set(exec.dispatch_id, exec.name);
-          }
-        }
-        setExecutionNames(names);
-      })
-      .catch((err) => {
-        if (err instanceof DOMException && err.name === "AbortError") return;
-        console.error("Failed to fetch execution names:", err);
-      });
-    return () => controller.abort();
-  }, []);
-
   const executionData = useOffsetVirtualData<Execution, void>({
     query: undefined as void,
     fetchPage: fetchExecutionPage,
@@ -465,6 +473,16 @@ export default function WorkspaceDetailPage() {
   });
 
   const { invalidate } = executionData;
+
+  // Collect all loaded executions for color assignment.
+  const allExecutions = useMemo(() => {
+    const items: Execution[] = [];
+    for (let i = 0; i < executionData.totalEstimate; i++) {
+      const item = executionData.getItem(i);
+      if (item) items.push(item);
+    }
+    return items;
+  }, [executionData]);
 
   const handleDelete = useCallback(
     async (id: string) => {
@@ -485,17 +503,34 @@ export default function WorkspaceDetailPage() {
   const handleConfirmDispatch = useCallback(
     async (sandboxId: string | null) => {
       if (!dispatchTarget) return;
-      const result = await dispatchExecution(dispatchTarget.id, { sandbox_id: sandboxId });
-      setExecutionNames((prev) => {
-        const next = new Map(prev);
-        next.set(result.id, dispatchTarget.name);
-        return next;
+      const color = getExecutionColor(dispatchTarget);
+      await dispatchExecution(dispatchTarget.id, {
+        sandbox_id: sandboxId,
+        callback: {
+          execution_id: dispatchTarget.id,
+          execution_name: dispatchTarget.name,
+          execution_color: color,
+        },
       });
       setDispatchTarget(null);
       invalidate();
     },
     [dispatchTarget, invalidate],
   );
+
+  const toggleExpanded = useCallback((id: string) => {
+    setExpandedExecutions((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleFormCreated = useCallback(() => {
+    invalidate();
+    setShowForm(false);
+  }, [invalidate]);
 
   return (
     <div className={styles.page}>
@@ -508,6 +543,7 @@ export default function WorkspaceDetailPage() {
           <BackArrow />
           Back
         </button>
+        <span className={styles.headerSep}>/</span>
         <h2 className={styles.workspaceName}>
           {workspace?.name ?? "\u00A0"}
         </h2>
@@ -517,15 +553,24 @@ export default function WorkspaceDetailPage() {
         <div className={styles.leftColumn}>
           <div className={styles.columnHeadingRow}>
             <h3 className={styles.columnHeading}>Executions</h3>
-            <button
-              className={styles.createExecutionButton}
-              onClick={() => setCreateDialogOpen(true)}
-              title="Create execution"
-              type="button"
-            >
-              +
-            </button>
           </div>
+
+          <button
+            className={styles.newExecutionButton}
+            onClick={() => setShowForm((v) => !v)}
+            type="button"
+          >
+            {showForm ? "\u2715 Close" : "+ New"}
+          </button>
+
+          {showForm && (
+            <CreateExecutionForm
+              sandboxes={sandboxes}
+              allExecutions={allExecutions}
+              onCreated={handleFormCreated}
+            />
+          )}
+
           {executionData.reachedEnd && executionData.totalEstimate === 0 ? (
             <p className={styles.empty}>No executions yet.</p>
           ) : (
@@ -534,6 +579,8 @@ export default function WorkspaceDetailPage() {
               renderItem={(execution) => (
                 <ExecutionCard
                   execution={execution}
+                  expanded={expandedExecutions.has(execution.id)}
+                  onToggle={() => toggleExpanded(execution.id)}
                   onDispatch={handleCardDispatch}
                   onDelete={handleDelete}
                 />
@@ -549,24 +596,16 @@ export default function WorkspaceDetailPage() {
         </div>
 
         <div className={styles.middleColumn}>
-          <ActivityViewer executionNames={executionNames} />
+          <ActivityViewer />
         </div>
-
-        <div className={styles.rightColumn} />
       </div>
 
       <DispatchDialog
         open={dispatchTarget !== null}
+        execution={dispatchTarget}
         sandboxes={sandboxes}
         onClose={() => setDispatchTarget(null)}
         onDispatch={handleConfirmDispatch}
-      />
-
-      <CreateExecutionDialog
-        open={createDialogOpen}
-        sandboxes={sandboxes}
-        onClose={() => setCreateDialogOpen(false)}
-        onCreated={invalidate}
       />
     </div>
   );

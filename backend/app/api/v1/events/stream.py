@@ -1,9 +1,10 @@
 """
 SSE streaming generator for the event stream.
 
-Yields events as Server-Sent Events, polling the database for new rows.
-Manages its own DB sessions since the connection is long-lived and can't
-use FastAPI's request-scoped dependency injection.
+The append-only events table is the source of truth. LISTEN/NOTIFY is only
+used as a wake-up signal so readers know when to run a fresh query for rows
+after their last seen cursor. We never rely on a long-running SQL query or
+trust the NOTIFY payload as the event data itself.
 """
 
 import asyncio
@@ -12,19 +13,13 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
-from sqlmodel import select
+from sqlalchemy.ext.asyncio import async_sessionmaker
 from sqlmodel.ext.asyncio.session import AsyncSession
 
-from app.api.v1.events.models import Event
+from app.api.v1.events.models import Event, EventRepository
+from app.api.v1.events.notify_bus import PgNotifyBus
 from app.core.config import settings
 from common.events import EventSourceType
-
-_engine = create_async_engine(settings.DATABASE_URL, echo=settings.ECHO_SQL)
-_make_session = async_sessionmaker(bind=_engine, class_=AsyncSession, expire_on_commit=False, autoflush=False)
-
-POLL_INTERVAL_SECONDS = 1
-BATCH_LIMIT = 100
 
 
 def _serialize_event(event: Event) -> str:
@@ -39,29 +34,96 @@ def _serialize_event(event: Event) -> str:
     return json.dumps(data, separators=(",", ":"))
 
 
+async def _load_events(
+    *,
+    session_factory: async_sessionmaker[AsyncSession],
+    cursor: int,
+    source_type: EventSourceType | None,
+    source_id: UUID | None,
+) -> list[Event]:
+    async with session_factory() as session:
+        repository = EventRepository(session=session)
+        events = await repository.list(
+            limit=settings.EVENT_STREAM_BATCH_SIZE,
+            since=cursor,
+            source_type=source_type,
+            source_id=source_id,
+        )
+        return list(events)
+
+
 async def event_stream_generator(
     *,
     since: int,
+    session_factory: async_sessionmaker[AsyncSession],
+    notify_bus: PgNotifyBus,
     source_type: EventSourceType | None = None,
     source_id: UUID | None = None,
 ) -> AsyncGenerator[str, None]:
     cursor = since
 
-    while True:
-        async with _make_session() as session:
-            statement = select(Event).where(Event.id > cursor)
-
-            if source_type is not None:
-                statement = statement.where(Event.source_type == source_type)
-            if source_id is not None:
-                statement = statement.where(Event.source_id == source_id)
-
-            statement = statement.order_by(Event.id).limit(BATCH_LIMIT)
-            events = (await session.exec(statement)).all()
-
-        for event in events:
+    async def emit_available_rows(available_events: list[Event]) -> AsyncGenerator[str, None]:
+        nonlocal cursor
+        for event in available_events:
             yield f"data: {_serialize_event(event)}\n\n"
             cursor = event.id  # type: ignore[assignment]
 
+    while True:
+        events = await _load_events(
+            session_factory=session_factory,
+            cursor=cursor,
+            source_type=source_type,
+            source_id=source_id,
+        )
         if not events:
-            await asyncio.sleep(POLL_INTERVAL_SECONDS)
+            break
+
+        async for chunk in emit_available_rows(events):
+            yield chunk
+
+    subscription_id, queue = notify_bus.subscribe(
+        source_type=source_type,
+        source_id=source_id,
+    )
+
+    try:
+        while True:
+            # Close the gap between the backlog query and subscription
+            # registration. The DB stays authoritative, so we immediately
+            # re-query before blocking on the next wake-up.
+            events = await _load_events(
+                session_factory=session_factory,
+                cursor=cursor,
+                source_type=source_type,
+                source_id=source_id,
+            )
+            if events:
+                async for chunk in emit_available_rows(events):
+                    yield chunk
+                continue
+
+            try:
+                await asyncio.wait_for(
+                    queue.get(),
+                    timeout=settings.EVENT_STREAM_KEEPALIVE_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                yield ": keepalive\n\n"
+                continue
+
+            # NOTIFY wakes the stream, but the rows still come from the
+            # append-only table so ordering and cursors come from Event.id.
+            while True:
+                events = await _load_events(
+                    session_factory=session_factory,
+                    cursor=cursor,
+                    source_type=source_type,
+                    source_id=source_id,
+                )
+                if not events:
+                    break
+
+                async for chunk in emit_available_rows(events):
+                    yield chunk
+    finally:
+        notify_bus.unsubscribe(subscription_id)

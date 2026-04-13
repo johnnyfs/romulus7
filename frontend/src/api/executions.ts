@@ -17,6 +17,7 @@ export type Execution = {
   updated_at: string;
   name: string;
   spec: ExecutionSpec;
+  metadata: Record<string, unknown> | null;
   dispatch_id: string | null;
 };
 
@@ -54,7 +55,11 @@ export const fetchExecutionPage: FetchPageFn<Execution, void> = async ({
 };
 
 export async function createExecution(
-  payload: { name: string; spec: ExecutionSpec },
+  payload: {
+    name: string;
+    spec: ExecutionSpec;
+    metadata?: Record<string, unknown> | null;
+  },
 ): Promise<Execution> {
   const response = await fetch("/api/v1/executions/", {
     method: "POST",
@@ -69,13 +74,17 @@ export async function createExecution(
 
 export async function dispatchExecution(
   executionId: string,
-  params: { sandbox_id?: string | null },
+  params: {
+    sandbox_id?: string | null;
+    callback?: Record<string, unknown> | null;
+  },
 ): Promise<DispatchResponse> {
   const response = await fetch(`/api/v1/executions/${executionId}/dispatch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       sandbox_id: params.sandbox_id ?? null,
+      callback: params.callback ?? null,
     }),
   });
   if (!response.ok) {

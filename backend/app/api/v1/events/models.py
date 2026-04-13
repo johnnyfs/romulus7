@@ -3,9 +3,10 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import Depends
-from sqlalchemy import DateTime, Enum, Integer
+from sqlalchemy import DateTime, Enum, Integer, text
 from sqlmodel import Column, Field, SQLModel, select
 
+from app.api.v1.events.notify_bus import EventNotification
 from app.api.v1.events.schemas import EventPayload
 from app.core.config import settings
 from app.core.db import get_session
@@ -38,9 +39,32 @@ class EventRepository:
     def _select(self):
         return select(Event)
 
+    def uses_database_notifications(self) -> bool:
+        bind = self._session.get_bind()
+        return bind is not None and bind.dialect.name == "postgresql"
+
     async def create(self, **kv_args) -> Event:
         model = Event(**kv_args)
         self._session.add(model)
+
+        # The events table is the source of truth. We insert the row first,
+        # then ask Postgres to send a small wake-up notification in the same
+        # transaction. Postgres only delivers NOTIFY on commit, so SSE readers
+        # never wake up before the append is durable.
+        await self._session.flush()
+        if self.uses_database_notifications():
+            notification = EventNotification(
+                source_type=model.source_type,
+                source_id=model.source_id,
+            )
+            await self._session.execute(
+                text("SELECT pg_notify(:channel, :payload)"),
+                {
+                    "channel": settings.EVENT_NOTIFY_CHANNEL,
+                    "payload": notification.model_dump_json(),
+                },
+            )
+
         await self._session.commit()
         await self._session.refresh(model)
         return model

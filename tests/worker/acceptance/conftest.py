@@ -38,6 +38,7 @@ async def reset_worker_state() -> None:
     app.state.worker_state.id = None
     app.state.worker_state.commands.clear()
     app.state.worker_state.command_tasks.clear()
+    app.state.worker_state.callbacks.clear()
 
 
 @pytest_asyncio.fixture

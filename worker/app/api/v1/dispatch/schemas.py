@@ -4,12 +4,14 @@ from uuid import UUID
 from pydantic import BaseModel, field_validator
 
 from common.execution import ExecutionSpec
+from common.events import EventCallback
 
 
 class DispatchRequest(BaseModel):
     sandbox_id: UUID | None = None
     working_directory: str | None = None
     execution_spec: ExecutionSpec
+    callback: EventCallback | None = None
 
     @field_validator("working_directory")
     @classmethod

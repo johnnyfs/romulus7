@@ -24,6 +24,7 @@ if str(BACKEND_ROOT) not in sys.path:
 
 from app.api.v1.executions.routers import app as executions_app
 from app.api.v1.events.routers import app as events_app
+from app.api.v1.events.notify_bus import PgNotifyBus
 from app.api.v1.sandboxes.routers import app as sandboxes_app
 from app.api.v1.workers.routers import app as workers_app
 from app.api.v1.workspaces.routers import app as workspaces_app
@@ -70,6 +71,8 @@ async def session_factory(engine: AsyncEngine) -> AsyncIterator[async_sessionmak
 async def client(
     session_factory: async_sessionmaker[AsyncSession],
 ) -> AsyncIterator[AsyncClient]:
+    notify_bus = PgNotifyBus(dsn=None, channel="test_events_channel")
+
     async def override_get_session() -> AsyncIterator[AsyncSession]:
         async with session_factory() as session:
             yield session
@@ -80,6 +83,8 @@ async def client(
     sandboxes_app.dependency_overrides[get_session] = override_get_session
     workers_app.dependency_overrides[get_session] = override_get_session
     workspaces_app.dependency_overrides[get_session] = override_get_session
+    events_app.state.event_notify_bus = notify_bus
+    events_app.state.event_session_factory = session_factory
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -87,6 +92,7 @@ async def client(
     ) as test_client:
         yield test_client
 
+    await notify_bus.close()
     app.dependency_overrides.clear()
     executions_app.dependency_overrides.clear()
     events_app.dependency_overrides.clear()

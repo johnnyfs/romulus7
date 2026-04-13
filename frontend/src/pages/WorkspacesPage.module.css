@@ -6,6 +6,10 @@
   flex: 1;
   min-height: 0;
   text-align: left;
+  max-width: 1126px;
+  margin: 0 auto;
+  width: 100%;
+  border-inline: 1px solid var(--border);
 }
 
 .header {

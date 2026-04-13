@@ -1,23 +1,36 @@
 from uuid import UUID
 
-from fastapi import Depends, FastAPI, Query
+from fastapi import Depends, FastAPI, Query, Request
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.events.models import EventRepository
+from app.api.v1.events.notify_bus import EventNotification, PgNotifyBus
 from app.api.v1.events.schemas import EventCreateRequest, EventCreateResponse, EventListItem, EventListResponse
 from app.api.v1.events.stream import event_stream_generator
 from app.core.config import settings
+from app.core.db import get_session_factory
 from common.events import EventSourceType
 
 app = FastAPI()
+app.state.event_notify_bus = PgNotifyBus(dsn=None, channel=settings.EVENT_NOTIFY_CHANNEL)
+app.state.event_session_factory = get_session_factory()
 
 
 @app.post("/")
 async def create_event(
-    request: EventCreateRequest,
+    event_request: EventCreateRequest,
+    request: Request,
     repository: EventRepository = Depends(EventRepository),
 ) -> EventCreateResponse:
-    model = await repository.create(**request.model_dump())
+    model = await repository.create(**event_request.model_dump())
+    notify_bus: PgNotifyBus = request.app.state.event_notify_bus
+    if not repository.uses_database_notifications():
+        await notify_bus.publish_local(
+            EventNotification(
+                source_type=event_request.source_type,
+                source_id=event_request.source_id,
+            )
+        )
     return EventCreateResponse(**model.model_dump())
 
 
@@ -41,15 +54,20 @@ async def get_events(
 
 @app.get("/stream")
 async def stream_events(
+    request: Request,
     since: int = Query(0, ge=0),
+    after: int | None = Query(None, ge=0),
     source_type: EventSourceType | None = None,
     source_id: UUID | None = None,
 ) -> StreamingResponse:
+    cursor = after if after is not None else since
     return StreamingResponse(
         event_stream_generator(
-            since=since,
+            since=cursor,
             source_type=source_type,
             source_id=source_id,
+            session_factory=request.app.state.event_session_factory,
+            notify_bus=request.app.state.event_notify_bus,
         ),
         media_type="text/event-stream",
         headers={

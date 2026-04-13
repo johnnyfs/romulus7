@@ -14,10 +14,8 @@ const ESTIMATED_ROW_HEIGHT = 80;
 
 function EventGroupCard({
   group,
-  executionName,
 }: {
   group: EventGroup;
-  executionName: string | undefined;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -29,12 +27,16 @@ function EventGroupCard({
   };
 
   const lines = group.events.map((e) => e.payload.line).join("\n");
+  const borderColor = group.executionColor ?? "var(--accent)";
 
   return (
-    <div className={styles.eventGroupCard}>
+    <div
+      className={styles.eventGroupCard}
+      style={{ borderLeft: `3px solid ${borderColor}` }}
+    >
       <div className={styles.eventGroupHeader}>
         <span className={styles.eventGroupName}>
-          {executionName ?? group.shortId}
+          {group.sourceName ?? group.shortId}
         </span>
         <span
           className={styles.eventGroupId}
@@ -53,11 +55,7 @@ function EventGroupPlaceholder() {
   return <div className={styles.eventGroupPlaceholder} />;
 }
 
-export function ActivityViewer({
-  executionNames,
-}: {
-  executionNames: Map<string, string>;
-}) {
+export function ActivityViewer() {
   const data = useEventStreamData();
 
   return (
@@ -68,12 +66,7 @@ export function ActivityViewer({
       ) : (
         <VirtualList
           data={data}
-          renderItem={(group) => (
-            <EventGroupCard
-              group={group}
-              executionName={executionNames.get(group.sourceId)}
-            />
-          )}
+          renderItem={(group) => <EventGroupCard group={group} />}
           renderPlaceholder={() => <EventGroupPlaceholder />}
           getItemKey={(group) => group.firstEventId}
           estimatedItemHeight={ESTIMATED_ROW_HEIGHT}

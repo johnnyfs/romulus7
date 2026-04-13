@@ -1,3 +1,5 @@
+from typing import Any
+
 from sqlmodel import Column, Field
 
 from app.core.db import get_session
@@ -11,6 +13,10 @@ class Execution(TableBase, table=True):
     __tablename__ = "execution"
     name: str
     spec: ExecutionSpec = Field(sa_column=Column(PydanticJSON(ExecutionSpec), nullable=False))
+    metadata_: dict[str, Any] | None = Field(
+        default=None,
+        sa_column=Column("metadata", PydanticJSON(dict[str, Any]), nullable=True),
+    )
 
 
 class ExecutionRepository(Repository[Execution]):

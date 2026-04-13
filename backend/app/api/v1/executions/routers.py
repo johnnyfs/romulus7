@@ -70,8 +70,12 @@ async def create_execution(
     request: ExecutionCreateRequest,
     repository: ExecutionRepository = Depends(ExecutionRepository),
 ) -> ExecutionCreateResponse:
-    model = await repository.create(**request.model_dump())
-    return ExecutionCreateResponse(**model.model_dump())
+    data = request.model_dump()
+    data["metadata_"] = data.pop("metadata", None)
+    model = await repository.create(**data)
+    resp = model.model_dump()
+    resp["metadata"] = resp.pop("metadata_", None)
+    return ExecutionCreateResponse(**resp)
 
 
 @app.get("/")
@@ -85,13 +89,12 @@ async def get_execution(
     dispatch_ids_by_execution_id = await dispatch_repository.list_dispatch_ids_by_execution_ids(
         [model.id for model in models]
     )
-    items = [
-        ExecutionListItem(
-            **model.model_dump(),
-            dispatch_id=dispatch_ids_by_execution_id.get(model.id),
-        )
-        for model in models
-    ]
+    items = []
+    for model in models:
+        data = model.model_dump()
+        data["metadata"] = data.pop("metadata_", None)
+        data["dispatch_id"] = dispatch_ids_by_execution_id.get(model.id)
+        items.append(ExecutionListItem(**data))
     return ExecutionListResponse(items=items, count=len(items))
 
 
@@ -101,7 +104,9 @@ async def get_execution_by_id(
     repository: ExecutionRepository = Depends(ExecutionRepository),
 ) -> ExecutionCreateResponse:
     model = await repository.get_by_id(execution_id)
-    return ExecutionCreateResponse(**model.model_dump())
+    resp = model.model_dump()
+    resp["metadata"] = resp.pop("metadata_", None)
+    return ExecutionCreateResponse(**resp)
 
 
 @app.post("/{execution_id}/dispatch")
@@ -127,6 +132,7 @@ async def dispatch_execution(
             "sandbox_id": str(request.sandbox_id) if request.sandbox_id else None,
             "working_directory": request.working_directory,
             "execution_spec": execution.model_dump()["spec"],
+            "callback": request.callback,
         },
     )
     model = await dispatch_repository.create(

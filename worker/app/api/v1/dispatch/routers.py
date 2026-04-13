@@ -44,13 +44,17 @@ async def post_dispatch_event(
     dispatch_id: UUID,
     line: str,
 ) -> None:
+    callback = worker_state.callbacks.get(dispatch_id)
     response = await client.post(
         "/api/v1/events/",
         json={
             "source_type": EventSourceType.DISPATCH,
             "source_id": str(dispatch_id),
             "type": DispatchEventType.COMMAND_STDOUT,
-            "payload": CommandStdoutEventPayload(line=line).model_dump(mode="json"),
+            "payload": CommandStdoutEventPayload(
+                line=line,
+                callback=callback,
+            ).model_dump(mode="json"),
         },
     )
     response.raise_for_status()
@@ -81,6 +85,7 @@ async def forward_command_output(
     finally:
         worker_state.commands.pop(dispatch_id, None)
         worker_state.command_tasks.pop(dispatch_id, None)
+        worker_state.callbacks.pop(dispatch_id, None)
 
 
 @app.post("/")
@@ -99,6 +104,8 @@ async def dispatch(
         cwd=working_dir,
     )
     worker_state.commands[dispatch_id] = process.pid
+    if request.callback is not None:
+        worker_state.callbacks[dispatch_id] = request.callback
     worker_state.command_tasks[dispatch_id] = asyncio.create_task(
         forward_command_output(dispatch_id, process)
     )

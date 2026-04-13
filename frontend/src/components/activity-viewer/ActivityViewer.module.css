@@ -37,6 +37,8 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--code-bg);
+  /* Left border color set dynamically via inline style */
+  border-left-width: 3px;
 }
 
 .eventGroupHeader {

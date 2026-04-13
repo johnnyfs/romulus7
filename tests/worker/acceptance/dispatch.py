@@ -53,6 +53,10 @@ async def test_dispatch_runs_command_in_workspace_directory(
             "sandbox_id": "00000000-0000-0000-0000-000000000123",
             "working_directory": "nested/path",
             "execution_spec": {"kind": "command", "command": "echo hello"},
+            "callback": {
+                "execution_id": "00000000-0000-0000-0000-000000000999",
+                "execution_name": "Alpha echo",
+            },
         },
     )
 
@@ -68,6 +72,10 @@ async def test_dispatch_runs_command_in_workspace_directory(
     assert expected_cwd.is_dir()
     assert app.state.worker_state.commands[dispatch_id] == 4242
     assert dispatch_id in app.state.worker_state.command_tasks
+    assert app.state.worker_state.callbacks[dispatch_id] == {
+        "execution_id": "00000000-0000-0000-0000-000000000999",
+        "execution_name": "Alpha echo",
+    }
 
     release_harness.set()
     await asyncio.sleep(0)
@@ -78,10 +86,11 @@ async def test_dispatch_posts_stdout_lines_as_events(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    captured_events: list[tuple[UUID, str]] = []
+    captured_events: list[tuple[UUID, str, dict[str, object] | None]] = []
 
     async def fake_post_dispatch_event(_, dispatch_id: UUID, line: str) -> None:
-        captured_events.append((dispatch_id, line))
+        callback = app.state.worker_state.callbacks.get(dispatch_id)
+        captured_events.append((dispatch_id, line, callback))
 
     async def wait_for_completion(dispatch_id: UUID) -> None:
         for _ in range(100):
@@ -109,6 +118,10 @@ async def test_dispatch_posts_stdout_lines_as_events(
                     [sys.executable, "-c", "print('alpha'); print('beta')"]
                 ),
             },
+            "callback": {
+                "execution_id": "00000000-0000-0000-0000-000000000999",
+                "execution_name": "Alpha echo",
+            },
         },
     )
 
@@ -118,11 +131,26 @@ async def test_dispatch_posts_stdout_lines_as_events(
     await wait_for_completion(dispatch_id)
 
     assert captured_events == [
-        (dispatch_id, "alpha"),
-        (dispatch_id, "beta"),
+        (
+            dispatch_id,
+            "alpha",
+            {
+                "execution_id": "00000000-0000-0000-0000-000000000999",
+                "execution_name": "Alpha echo",
+            },
+        ),
+        (
+            dispatch_id,
+            "beta",
+            {
+                "execution_id": "00000000-0000-0000-0000-000000000999",
+                "execution_name": "Alpha echo",
+            },
+        ),
     ]
     assert dispatch_id not in app.state.worker_state.commands
     assert dispatch_id not in app.state.worker_state.command_tasks
+    assert dispatch_id not in app.state.worker_state.callbacks
 
 
 async def test_dispatch_rejects_non_relative_working_directory(

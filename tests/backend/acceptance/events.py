@@ -23,6 +23,10 @@ async def test_event_contract_supports_source_and_since_filters(
             "payload": {
                 "kind": "command.stdout",
                 "line": "alpha",
+                "callback": {
+                    "execution_id": "00000000-0000-0000-0000-000000000111",
+                    "execution_name": "Alpha echo",
+                },
             },
         }
     )
@@ -34,6 +38,10 @@ async def test_event_contract_supports_source_and_since_filters(
             "payload": {
                 "kind": "command.stdout",
                 "line": "beta",
+                "callback": {
+                    "execution_id": "00000000-0000-0000-0000-000000000111",
+                    "execution_name": "Alpha echo",
+                },
             },
         }
     )
@@ -45,6 +53,10 @@ async def test_event_contract_supports_source_and_since_filters(
             "payload": {
                 "kind": "command.stdout",
                 "line": "gamma",
+                "callback": {
+                    "execution_id": "00000000-0000-0000-0000-000000000222",
+                    "execution_name": "Beta echo",
+                },
             },
         }
     )

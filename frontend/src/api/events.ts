@@ -5,9 +5,17 @@
  * endpoint URL and response shape.
  */
 
+export type EventCallback = {
+  execution_id?: string;
+  execution_name?: string;
+  execution_color?: string;
+  [key: string]: unknown;
+};
+
 export type EventPayload = {
   kind: "command.stdout";
   line: string;
+  callback?: EventCallback | null;
 };
 
 export type Event = {

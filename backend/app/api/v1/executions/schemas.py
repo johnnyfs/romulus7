@@ -1,4 +1,5 @@
 from pathlib import PurePath
+from typing import Any
 from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
@@ -10,6 +11,7 @@ from common.execution import ExecutionSpec
 class ExecutionBase(BaseModel):
     name: str = Field(min_length=1)
     spec: ExecutionSpec
+    metadata: dict[str, Any] | None = None
 
     @field_validator("name")
     @classmethod
@@ -27,6 +29,7 @@ class ExecutionCreateRequest(ExecutionBase):
 class ExecutionDispatchRequest(BaseModel):
     sandbox_id: UUID | None = None
     working_directory: str | None = None
+    callback: dict[str, Any] | None = None
 
     @field_validator("working_directory")
     @classmethod

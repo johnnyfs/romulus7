@@ -15,13 +15,27 @@ import type { OffsetVirtualDataResult } from "./types";
 export type EventGroup = {
   /** Full dispatch UUID (source_id). */
   sourceId: string;
+  /** Friendly execution name from the dispatch callback payload, when available. */
+  sourceName: string | null;
   /** First 8 characters of sourceId for display. */
   shortId: string;
+  /** Execution color from the dispatch callback, when available. */
+  executionColor: string | null;
   /** Raw events in this group. */
   events: Event[];
   /** ID of the first event — used as a stable React key. */
   firstEventId: number;
 };
+
+function getSourceName(event: Event): string | null {
+  const name = event.payload.callback?.execution_name;
+  return typeof name === "string" && name.length > 0 ? name : null;
+}
+
+function getExecutionColor(event: Event): string | null {
+  const color = event.payload.callback?.execution_color;
+  return typeof color === "string" && color.length > 0 ? color : null;
+}
 
 export function useEventStreamData(): OffsetVirtualDataResult<EventGroup> {
   const [groups, setGroups] = useState<EventGroup[]>([]);
@@ -45,6 +59,8 @@ export function useEventStreamData(): OffsetVirtualDataResult<EventGroup> {
     es.onmessage = (msg) => {
       const event: Event = JSON.parse(msg.data);
       lastSeenIdRef.current = event.id;
+      const sourceName = getSourceName(event);
+      const executionColor = getExecutionColor(event);
 
       const current = groupsRef.current;
       const lastGroup = current.length > 0 ? current[current.length - 1] : null;
@@ -54,6 +70,8 @@ export function useEventStreamData(): OffsetVirtualDataResult<EventGroup> {
         // group so React sees the change.
         const updatedGroup: EventGroup = {
           ...lastGroup,
+          sourceName: lastGroup.sourceName ?? sourceName,
+          executionColor: lastGroup.executionColor ?? executionColor,
           events: [...lastGroup.events, event],
         };
         const next = [...current.slice(0, -1), updatedGroup];
@@ -63,7 +81,9 @@ export function useEventStreamData(): OffsetVirtualDataResult<EventGroup> {
         // New group.
         const newGroup: EventGroup = {
           sourceId: event.source_id,
+          sourceName,
           shortId: event.source_id.slice(0, 8),
+          executionColor,
           events: [event],
           firstEventId: event.id,
         };

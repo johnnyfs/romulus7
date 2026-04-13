@@ -147,11 +147,16 @@ async def test_execution_dispatch_uses_existing_worker_lease(
         fake_dispatch_to_worker,
     )
 
+    callback = {
+        "execution_id": execution["id"],
+        "execution_name": execution["name"],
+    }
     response = await client.post(
         f"{EXECUTIONS_PATH}{execution['id']}/dispatch",
         json={
             "sandbox_id": sandbox["id"],
             "working_directory": "nested/path",
+            "callback": callback,
         },
     )
 
@@ -165,6 +170,7 @@ async def test_execution_dispatch_uses_existing_worker_lease(
             "sandbox_id": sandbox["id"],
             "working_directory": "nested/path",
             "execution_spec": execution["spec"],
+            "callback": callback,
         },
     }
 
@@ -186,12 +192,18 @@ async def test_execution_dispatch_auto_leases_worker_for_sandbox(
     worker = await create_worker("http://localhost:9000/")
     worker_dispatch_id = str(uuid4())
 
+    callback = {
+        "execution_id": execution["id"],
+        "execution_name": execution["name"],
+    }
+
     async def fake_dispatch_to_worker(worker_url: str, payload: dict) -> dict:
         assert worker_url == worker["url"]
         assert payload == {
             "sandbox_id": sandbox["id"],
             "working_directory": None,
             "execution_spec": execution["spec"],
+            "callback": callback,
         }
         return {"id": worker_dispatch_id, "process_id": 4242}
 
@@ -202,7 +214,7 @@ async def test_execution_dispatch_auto_leases_worker_for_sandbox(
 
     response = await client.post(
         f"{EXECUTIONS_PATH}{execution['id']}/dispatch",
-        json={"sandbox_id": sandbox["id"], "working_directory": None},
+        json={"sandbox_id": sandbox["id"], "working_directory": None, "callback": callback},
     )
 
     assert response.status_code == HTTPStatus.OK
