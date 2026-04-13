@@ -21,6 +21,10 @@ class DispatchRepository(Repository[Dispatch]):
     def __init__(self, session = Depends(get_session)):
         super().__init__(table_model=Dispatch, session=session)
 
+    async def list_by_execution_id(self, execution_id: UUID) -> Sequence[Dispatch]:
+        statement = self._select().where(self._table_model.execution_id == execution_id)
+        return (await self._session.exec(statement)).all()
+
     async def list_dispatch_ids_by_execution_ids(
         self,
         execution_ids: Sequence[UUID],

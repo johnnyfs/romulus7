@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query, Request
+from app.core.filters import Filters
 from fastapi.responses import StreamingResponse
 
 from app.api.v1.events.models import EventRepository
@@ -41,12 +42,14 @@ async def get_events(
     source_type: EventSourceType | None = None,
     source_id: UUID | None = None,
     repository: EventRepository = Depends(EventRepository),
+    filters: Filters = Depends(Filters.from_request),
 ) -> EventListResponse:
     models = await repository.list(
         limit=limit,
         since=since,
         source_type=source_type,
         source_id=source_id,
+        filters=filters,
     )
     items = [EventListItem(**model.model_dump()) for model in models]
     return EventListResponse(items=items, count=len(items))

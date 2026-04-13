@@ -5,7 +5,7 @@ ifneq (,$(wildcard ./.env))
 endif
 
 dev-backend: dev-backend-services dev-backend-migrations
-	cd backend; uv run uvicorn app.main:app --reload --port $(BACKEND_PORT)
+	cd backend; uv sync --all-extras; uv run uvicorn app.main:app --reload --port $(BACKEND_PORT)
 
 dev-frontend: dev-frontend-install
 	cd frontend; pnpm dev --port $(FRONTEND_PORT)
@@ -26,7 +26,7 @@ dev-backend-services:
 	docker compose --file docker-compose.services.yaml --env-file .env up --wait -d
 
 dev-backend-migrations: dev-backend-services
-	cd backend; uv run alembic upgrade head
+	cd backend; DB_USER=$(DB_USER) DB_PASS=$(DB_PASS) DB_HOST=$(DB_HOST) DB_NAME=$(DB_NAME) uv run alembic upgrade head
 
 dev-backend-services-down:
 	docker compose --file docker-compose.services.yaml --env-file .env down

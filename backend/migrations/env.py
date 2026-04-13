@@ -1,8 +1,10 @@
 from logging.config import fileConfig
 import os
 
+import sqlalchemy as sa
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
+from sqlalchemy.dialects import postgresql
 from sqlmodel import SQLModel
 
 from alembic import context
@@ -14,6 +16,7 @@ from app.api.v1.sandboxes.models import Sandbox  # noqa: F401
 from app.api.v1.worker_leases.models import WorkerLease  # noqa: F401
 from app.api.v1.workers.models import Worker  # noqa: F401
 from app.api.v1.workspaces.models import Workspace  # noqa: F401
+from app.core.models import PydanticJSON
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -46,6 +49,26 @@ target_metadata = SQLModel.metadata
 # ... etc.
 
 
+def render_item(type_, obj, autogen_context):
+    if type_ == "type" and isinstance(obj, PydanticJSON):
+        if autogen_context.dialect.name == "postgresql":
+            autogen_context.imports.add("from sqlalchemy.dialects import postgresql")
+            return "postgresql.JSONB(astext_type=sa.Text())"
+        return "sa.JSON()"
+
+    return False
+
+
+def compare_type(context, inspected_column, metadata_column, inspected_type, metadata_type):
+    if isinstance(metadata_type, PydanticJSON) and isinstance(
+        inspected_type,
+        (sa.JSON, postgresql.JSON, postgresql.JSONB),
+    ):
+        return False
+
+    return None
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
 
@@ -64,6 +87,8 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        render_item=render_item,
+        compare_type=compare_type,
     )
 
     with context.begin_transaction():
@@ -85,7 +110,10 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection,
+            target_metadata=target_metadata,
+            render_item=render_item,
+            compare_type=compare_type,
         )
 
         with context.begin_transaction():

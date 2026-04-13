@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from app.api.v1.dispatches.models import DispatchRepository
 from app.api.v1.dispatches.schemas import DispatchCreateResponse
+from app.api.v1.executions.controllers import ExecutionsController
 from app.api.v1.sandboxes.models import SandboxRepository
 from app.api.v1.worker_leases.models import WorkerLeaseRepository
 from app.api.v1.workers.models import WorkerRepository
@@ -146,7 +147,7 @@ async def dispatch_execution(
 @app.delete("/{execution_id}")
 async def delete_execution(
     execution_id: UUID,
-    repository: ExecutionRepository = Depends(ExecutionRepository),
+    controller: ExecutionsController = Depends(ExecutionsController),
 ) -> ExecutionDeleteResponse:
-    deleted = await repository.delete_by_id(execution_id)
+    deleted = await controller.delete(execution_id)
     return ExecutionDeleteResponse(id=execution_id, deleted=deleted)

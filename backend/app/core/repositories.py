@@ -3,6 +3,7 @@ from uuid import UUID
 
 from fastapi import HTTPException
 from sqlmodel import select
+from app.core.filters import Filters
 from sqlmodel.ext.asyncio.session import AsyncSession
 from app.core.models import TableBase
 
@@ -16,8 +17,11 @@ class Repository[T]:
     def _select(self):
         return select(self._table_model).where(self._table_model.deleted == False)  # noqa: E712
 
-    def _list(self, offset: int, limit: int):
-        return self._select().offset(offset).limit(limit)
+    def _list(self, offset: int, limit: int, filters: Filters = None):
+        stmt = self._select()
+        if filters:
+            stmt = filters.apply(stmt, self._table_model)
+        return stmt.offset(offset).limit(limit)
     
     def _get(self, id: UUID):
         return self._select().where(self._table_model.id == id)
@@ -29,8 +33,8 @@ class Repository[T]:
         await self._session.refresh(model)
         return model
     
-    async def list(self, limit: int, offset: int = 0) -> Sequence[T]:
-        return (await self._session.exec(self._list(offset, limit))).all()
+    async def list(self, limit: int, offset: int = 0, filters: Filters = None) -> Sequence[T]:
+        return (await self._session.exec(self._list(offset, limit, filters))).all()
 
     async def find_by_id(self, id: UUID) -> T | None:
         return (await self._session.exec(self._get(id))).one_or_none()

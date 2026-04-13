@@ -13,7 +13,14 @@ from fastapi import FastAPI
 from app.api.v1.dispatch.schemas import DispatchRequest, DispatchResponse
 from app.core.config import settings
 from app.core.state import worker_state
-from common.events import CommandStdoutEventPayload, DispatchEventType, EventSourceType
+from common.events import (
+    CommandExitEventPayload,
+    CommandStdoutEventPayload,
+    DispatchEventType,
+    DispatchTerminatedEventPayload,
+    EventPayload,
+    EventSourceType,
+)
 
 app = FastAPI()
 logger = logging.getLogger(__name__)
@@ -42,19 +49,16 @@ async def start_command(
 async def post_dispatch_event(
     client: httpx.AsyncClient,
     dispatch_id: UUID,
-    line: str,
+    event_type: DispatchEventType,
+    payload: EventPayload,
 ) -> None:
-    callback = worker_state.callbacks.get(dispatch_id)
     response = await client.post(
         "/api/v1/events/",
         json={
             "source_type": EventSourceType.DISPATCH,
             "source_id": str(dispatch_id),
-            "type": DispatchEventType.COMMAND_STDOUT,
-            "payload": CommandStdoutEventPayload(
-                line=line,
-                callback=callback,
-            ).model_dump(mode="json"),
+            "type": event_type,
+            "payload": payload.model_dump(mode="json"),
         },
     )
     response.raise_for_status()
@@ -64,6 +68,7 @@ async def forward_command_output(
     dispatch_id: UUID,
     process: asyncio.subprocess.Process,
 ) -> None:
+    callback = worker_state.callbacks.get(dispatch_id)
     try:
         async with httpx.AsyncClient(base_url=settings.BACKEND_URL) as client:
             if process.stdout is not None:
@@ -76,12 +81,36 @@ async def forward_command_output(
                         await post_dispatch_event(
                             client,
                             dispatch_id,
-                            line.decode(errors="replace").rstrip("\r\n"),
+                            DispatchEventType.COMMAND_STDOUT,
+                            CommandStdoutEventPayload(
+                                line=line.decode(errors="replace").rstrip("\r\n"),
+                                callback=callback,
+                            ),
                         )
                     except Exception:
                         logger.exception("Failed to post dispatch event for %s", dispatch_id)
 
-            await process.wait()
+            exit_code = await process.wait()
+            try:
+                await post_dispatch_event(
+                    client,
+                    dispatch_id,
+                    DispatchEventType.COMMAND_EXIT,
+                    CommandExitEventPayload(
+                        exit_code=exit_code,
+                        callback=callback,
+                    ),
+                )
+                await post_dispatch_event(
+                    client,
+                    dispatch_id,
+                    DispatchEventType.DISPATCH_TERMINATED,
+                    DispatchTerminatedEventPayload(
+                        callback=callback,
+                    ),
+                )
+            except Exception:
+                logger.exception("Failed to post command completion events for %s", dispatch_id)
     finally:
         worker_state.commands.pop(dispatch_id, None)
         worker_state.command_tasks.pop(dispatch_id, None)
