@@ -1,4 +1,5 @@
 import asyncio
+import shlex
 import sys
 from http import HTTPStatus
 from pathlib import Path
@@ -31,8 +32,8 @@ async def test_dispatch_runs_command_in_workspace_directory(
     captured: dict[str, object] = {}
     release_harness = asyncio.Event()
 
-    async def fake_start_command(commands: list[str], cwd: Path) -> FakeProcess:
-        captured["commands"] = commands
+    async def fake_start_command(command: str, cwd: Path) -> FakeProcess:
+        captured["command"] = command
         captured["cwd"] = cwd
         return FakeProcess(pid=4242)
 
@@ -51,7 +52,7 @@ async def test_dispatch_runs_command_in_workspace_directory(
         json={
             "sandbox_id": "00000000-0000-0000-0000-000000000123",
             "working_directory": "nested/path",
-            "execution_spec": {"kind": "command", "commands": ["echo", "hello"]},
+            "execution_spec": {"kind": "command", "command": "echo hello"},
         },
     )
 
@@ -61,7 +62,7 @@ async def test_dispatch_runs_command_in_workspace_directory(
     expected_cwd = tmp_path / ".workspaces" / "00000000-0000-0000-0000-000000000123" / "nested/path"
     assert payload["process_id"] == 4242
     assert captured == {
-        "commands": ["echo", "hello"],
+        "command": "echo hello",
         "cwd": expected_cwd,
     }
     assert expected_cwd.is_dir()
@@ -104,11 +105,9 @@ async def test_dispatch_posts_stdout_lines_as_events(
             "working_directory": None,
             "execution_spec": {
                 "kind": "command",
-                "commands": [
-                    sys.executable,
-                    "-c",
-                    "print('alpha'); print('beta')",
-                ],
+                "command": shlex.join(
+                    [sys.executable, "-c", "print('alpha'); print('beta')"]
+                ),
             },
         },
     )
@@ -134,7 +133,7 @@ async def test_dispatch_rejects_non_relative_working_directory(
         json={
             "sandbox_id": None,
             "working_directory": "/absolute/path",
-            "execution_spec": {"kind": "command", "commands": ["echo", "hello"]},
+            "execution_spec": {"kind": "command", "command": "echo hello"},
         },
     )
 
@@ -142,3 +141,46 @@ async def test_dispatch_rejects_non_relative_working_directory(
     assert any(
         error["loc"][-1] == "working_directory" for error in response.json()["detail"]
     )
+
+
+async def test_dispatch_supports_shell_redirection(
+    client: AsyncClient,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    async def wait_for_completion(dispatch_id: UUID) -> None:
+        for _ in range(100):
+            if dispatch_id not in app.state.worker_state.command_tasks:
+                return
+
+            await asyncio.sleep(0.01)
+
+        raise AssertionError("dispatch command did not finish before timeout")
+
+    monkeypatch.chdir(tmp_path)
+
+    response = await client.post(
+        DISPATCH_PATH,
+        json={
+            "sandbox_id": "00000000-0000-0000-0000-000000000123",
+            "working_directory": "nested/path",
+            "execution_spec": {
+                "kind": "command",
+                "command": "echo test > proof.txt",
+            },
+        },
+    )
+
+    assert response.status_code == HTTPStatus.OK
+    dispatch_id = UUID(response.json()["id"])
+
+    await wait_for_completion(dispatch_id)
+
+    expected_file = (
+        tmp_path
+        / ".workspaces"
+        / "00000000-0000-0000-0000-000000000123"
+        / "nested/path"
+        / "proof.txt"
+    )
+    assert expected_file.read_text().strip() == "test"

@@ -79,9 +79,19 @@ async def get_execution(
     limit: int = Query(settings.DEFAULT_PAGE_SIZE, gt=0, le=settings.MAX_PAGE_SIZE),
     offset: int = Query(0, ge=0),
     repository: ExecutionRepository = Depends(ExecutionRepository),
+    dispatch_repository: DispatchRepository = Depends(DispatchRepository),
 ) -> ExecutionListResponse:
     models = await repository.list(limit, offset)
-    items = [ExecutionListItem(**model.model_dump()) for model in models]
+    dispatch_ids_by_execution_id = await dispatch_repository.list_dispatch_ids_by_execution_ids(
+        [model.id for model in models]
+    )
+    items = [
+        ExecutionListItem(
+            **model.model_dump(),
+            dispatch_id=dispatch_ids_by_execution_id.get(model.id),
+        )
+        for model in models
+    ]
     return ExecutionListResponse(items=items, count=len(items))
 
 

@@ -29,14 +29,14 @@ def _set_parent_death_signal() -> None:
 
 
 async def start_command(
-    commands: list[str],
+    command: str,
     cwd: Path,
 ) -> asyncio.subprocess.Process:
     kwargs = {"cwd": str(cwd), "stdout": asyncio.subprocess.PIPE}
     if os.name == "posix" and sys.platform.startswith("linux"):
         kwargs["preexec_fn"] = _set_parent_death_signal
 
-    return await asyncio.create_subprocess_exec(*commands, **kwargs)
+    return await asyncio.create_subprocess_shell(command, **kwargs)
 
 
 async def post_dispatch_event(
@@ -95,7 +95,7 @@ async def dispatch(
     working_dir = working_dir.resolve()
 
     process = await start_command(
-        request.execution_spec.commands,
+        request.execution_spec.command,
         cwd=working_dir,
     )
     worker_state.commands[dispatch_id] = process.pid

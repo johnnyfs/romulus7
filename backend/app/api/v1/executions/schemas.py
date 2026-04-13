@@ -1,14 +1,23 @@
 from pathlib import PurePath
 from uuid import UUID
 
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.schemas import BaseDeleteResponse, BaseListItem, BaseListResponse, BaseModelResponse
 from common.execution import ExecutionSpec
 
 
 class ExecutionBase(BaseModel):
+    name: str = Field(min_length=1)
     spec: ExecutionSpec
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        normalized = value.strip()
+        if not normalized:
+            raise ValueError("name must not be empty")
+        return normalized
 
 
 class ExecutionCreateRequest(ExecutionBase):
@@ -37,7 +46,7 @@ class ExecutionCreateResponse(BaseModelResponse, ExecutionBase):
 
 
 class ExecutionListItem(BaseListItem, ExecutionBase):
-    pass
+    dispatch_id: UUID | None = None
 
 
 class ExecutionListResponse(BaseListResponse[ExecutionListItem]):

@@ -32,7 +32,7 @@ dev-backend-services-down:
 	docker compose --file docker-compose.services.yaml --env-file .env down
 
 dev-backend-services-clean:
-	docker compose --file docker-compose.services.yaml --env-file .env down -v db
+	docker compose --file docker-compose.services.yaml --env-file .env down --volumes --remove-orphans
 
 dev-frontend-install:
 	cd frontend; pnpm install

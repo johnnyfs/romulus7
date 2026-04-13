@@ -138,10 +138,10 @@ async def create_worker(
 async def create_execution(
     client: AsyncClient,
 ) -> Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]:
-    async def _create_execution(spec: dict[str, Any]) -> dict[str, Any]:
+    async def _create_execution(execution: dict[str, Any]) -> dict[str, Any]:
         response = await client.post(
             EXECUTIONS_PATH,
-            json={"spec": spec},
+            json=execution,
         )
         assert response.status_code == 200, response.text
         return response.json()

@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Sequence
 from uuid import UUID
 
 from fastapi import Depends
@@ -20,3 +20,14 @@ class Dispatch(TableBase, table=True):
 class DispatchRepository(Repository[Dispatch]):
     def __init__(self, session = Depends(get_session)):
         super().__init__(table_model=Dispatch, session=session)
+
+    async def list_dispatch_ids_by_execution_ids(
+        self,
+        execution_ids: Sequence[UUID],
+    ) -> dict[UUID, UUID]:
+        if not execution_ids:
+            return {}
+
+        statement = self._select().where(self._table_model.execution_id.in_(execution_ids))
+        models = (await self._session.exec(statement)).all()
+        return {model.execution_id: model.id for model in models}
