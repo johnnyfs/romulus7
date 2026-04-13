@@ -3,6 +3,7 @@ from typing import Annotated, Any, Literal
 
 from pydantic import AnyHttpUrl, BaseModel, BeforeValidator, Field, TypeAdapter, WithJsonSchema
 
+from app.api.v1.worker_leases.schemas import WorkerLeaseListItem
 from app.core.schemas import BaseDeleteResponse, BaseListItem, BaseListResponse, BaseModelResponse
 
 
@@ -38,6 +39,7 @@ class WorkerCreateRequest(WorkerBase):
 
 class WorkerRead(BaseModel):
     heartbeat_at: datetime | None = None
+    leases: list[WorkerLeaseListItem] = Field(default_factory=list)
 
 
 class WorkerCreateResponse(BaseModelResponse, WorkerBase, WorkerRead):

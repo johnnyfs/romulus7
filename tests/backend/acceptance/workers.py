@@ -11,6 +11,7 @@ WORKERS_PATH = "/api/v1/workers/"
 def assert_worker_payload(payload: dict, *, expected_url: str) -> None:
     assert payload["url"] == expected_url
     assert payload["heartbeat_at"] is None
+    assert payload["leases"] == []
     assert payload["id"]
     assert "deleted" not in payload
     assert datetime.fromisoformat(payload["created_at"])

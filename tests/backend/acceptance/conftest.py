@@ -22,13 +22,17 @@ BACKEND_ROOT = REPO_ROOT / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.api.v1.executions.routers import app as executions_app
+from app.api.v1.sandboxes.routers import app as sandboxes_app
 from app.api.v1.workers.routers import app as workers_app
 from app.api.v1.workspaces.routers import app as workspaces_app
 from app.core.db import get_session
 from app.main import app
 
 
+EXECUTIONS_PATH = "/api/v1/executions/"
 HEALTH_PATH = "/api/v1/health/"
+SANDBOXES_PATH = "/api/v1/sandboxes/"
 WORKERS_PATH = "/api/v1/workers/"
 WORKSPACES_PATH = "/api/v1/workspaces/"
 
@@ -69,6 +73,8 @@ async def client(
             yield session
 
     app.dependency_overrides[get_session] = override_get_session
+    executions_app.dependency_overrides[get_session] = override_get_session
+    sandboxes_app.dependency_overrides[get_session] = override_get_session
     workers_app.dependency_overrides[get_session] = override_get_session
     workspaces_app.dependency_overrides[get_session] = override_get_session
 
@@ -79,6 +85,8 @@ async def client(
         yield test_client
 
     app.dependency_overrides.clear()
+    executions_app.dependency_overrides.clear()
+    sandboxes_app.dependency_overrides.clear()
     workers_app.dependency_overrides.clear()
     workspaces_app.dependency_overrides.clear()
 
@@ -96,6 +104,18 @@ async def create_workspace(
 
 
 @pytest_asyncio.fixture
+async def create_sandbox(
+    client: AsyncClient,
+) -> Callable[[str], Awaitable[dict[str, Any]]]:
+    async def _create_sandbox(name: str) -> dict[str, Any]:
+        response = await client.post(SANDBOXES_PATH, json={"name": name})
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    return _create_sandbox
+
+
+@pytest_asyncio.fixture
 async def create_worker(
     client: AsyncClient,
 ) -> Callable[[str], Awaitable[dict[str, Any]]]:
@@ -108,3 +128,33 @@ async def create_worker(
         return response.json()
 
     return _create_worker
+
+
+@pytest_asyncio.fixture
+async def create_execution(
+    client: AsyncClient,
+) -> Callable[[dict[str, Any]], Awaitable[dict[str, Any]]]:
+    async def _create_execution(spec: dict[str, Any]) -> dict[str, Any]:
+        response = await client.post(
+            EXECUTIONS_PATH,
+            json={"spec": spec},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    return _create_execution
+
+
+@pytest_asyncio.fixture
+async def create_worker_lease(
+    client: AsyncClient,
+) -> Callable[[str, str], Awaitable[dict[str, Any]]]:
+    async def _create_worker_lease(worker_id: str, sandbox_id: str) -> dict[str, Any]:
+        response = await client.post(
+            f"{WORKERS_PATH}{worker_id}/lease",
+            json={"sandbox_id": sandbox_id},
+        )
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    return _create_worker_lease

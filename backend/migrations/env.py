@@ -7,6 +7,9 @@ from sqlmodel import SQLModel
 
 from alembic import context
 
+from app.api.v1.executions.models import Execution  # noqa: F401
+from app.api.v1.sandboxes.models import Sandbox  # noqa: F401
+from app.api.v1.worker_leases.models import WorkerLease  # noqa: F401
 from app.api.v1.workers.models import Worker  # noqa: F401
 from app.api.v1.workspaces.models import Workspace  # noqa: F401
 
