@@ -55,6 +55,17 @@ export async function createWorkspace(
   return response.json();
 }
 
+export async function fetchWorkspace(
+  workspaceId: string,
+  signal?: AbortSignal,
+): Promise<Workspace> {
+  const response = await fetch(`/api/v1/workspaces/${workspaceId}`, { signal });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch workspace: ${response.status}`);
+  }
+  return response.json();
+}
+
 export async function deleteWorkspace(
   workspaceId: string,
   signal?: AbortSignal,

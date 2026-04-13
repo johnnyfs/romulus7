@@ -8,7 +8,9 @@
  *   3. View layer  — VirtualList (generic) + WorkspaceCard (workspace-specific)
  */
 import { useCallback, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useOffsetVirtualData } from "../components/virtual-list/useOffsetVirtualData";
+
 import { VirtualList } from "../components/virtual-list/VirtualList";
 import { fetchWorkspacePage, createWorkspace, deleteWorkspace } from "../api/workspaces";
 import type { Workspace } from "../api/workspaces";
@@ -46,6 +48,7 @@ function WorkspaceCard({
   workspace: Workspace;
   onDelete: (id: string) => void;
 }) {
+  const navigate = useNavigate();
   const [deleting, setDeleting] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -66,7 +69,7 @@ function WorkspaceCard({
   const shortId = workspace.id.slice(0, 8);
 
   return (
-    <div className={styles.card}>
+    <div className={styles.card} onClick={() => navigate(`/workspaces/${workspace.id}`)}>
       <button
         className={styles.deleteButton}
         onClick={handleDelete}
