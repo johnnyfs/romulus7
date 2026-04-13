@@ -7,10 +7,10 @@
  *   2. Data hook   — useOffsetVirtualData (generic, domain-agnostic)
  *   3. View layer  — VirtualList (generic) + WorkspaceCard (workspace-specific)
  */
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { useOffsetVirtualData } from "../components/virtual-list/useOffsetVirtualData";
 import { VirtualList } from "../components/virtual-list/VirtualList";
-import { fetchWorkspacePage, deleteWorkspace } from "../api/workspaces";
+import { fetchWorkspacePage, createWorkspace, deleteWorkspace } from "../api/workspaces";
 import type { Workspace } from "../api/workspaces";
 import styles from "./WorkspacesPage.module.css";
 
@@ -96,6 +96,92 @@ function WorkspacePlaceholder() {
   return <div className={styles.placeholder} />;
 }
 
+function CreateWorkspaceDialog({
+  open,
+  onClose,
+  onCreate,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreate: (name: string) => Promise<void>;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+  const [name, setName] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+
+  // Sync the open prop with the <dialog> element.
+  const prevOpen = useRef(false);
+  if (open !== prevOpen.current) {
+    prevOpen.current = open;
+    if (open) {
+      // showModal runs after mount, so schedule it.
+      queueMicrotask(() => dialogRef.current?.showModal());
+    } else {
+      dialogRef.current?.close();
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    setSubmitting(true);
+    setError("");
+    try {
+      await onCreate(trimmed);
+      setName("");
+      onClose();
+    } catch {
+      setError("Failed to create workspace.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <dialog
+      ref={dialogRef}
+      className={styles.dialog}
+      onClose={onClose}
+    >
+      <form onSubmit={handleSubmit}>
+        <h3 className={styles.dialogTitle}>Create workspace</h3>
+        <label className={styles.dialogLabel} htmlFor="ws-name">
+          Name
+        </label>
+        <input
+          id="ws-name"
+          className={styles.dialogInput}
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="my-workspace"
+          autoFocus
+          required
+        />
+        {error && <p className={styles.dialogError}>{error}</p>}
+        <div className={styles.dialogActions}>
+          <button
+            type="button"
+            className={styles.dialogCancel}
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            className={styles.dialogSubmit}
+            disabled={submitting || !name.trim()}
+          >
+            {submitting ? "Creating..." : "Create"}
+          </button>
+        </div>
+      </form>
+    </dialog>
+  );
+}
+
 export default function WorkspacesPage() {
   const data = useOffsetVirtualData<Workspace, void>({
     query: undefined as void,
@@ -104,6 +190,7 @@ export default function WorkspacesPage() {
   });
 
   const { invalidate } = data;
+  const [dialogOpen, setDialogOpen] = useState(false);
 
   const handleDelete = useCallback(
     async (workspaceId: string) => {
@@ -117,9 +204,31 @@ export default function WorkspacesPage() {
     [invalidate],
   );
 
+  const handleCreate = useCallback(
+    async (name: string) => {
+      await createWorkspace(name);
+      invalidate();
+    },
+    [invalidate],
+  );
+
   return (
     <div className={styles.page}>
-      <h2 className={styles.heading}>Workspaces</h2>
+      <div className={styles.header}>
+        <h2 className={styles.heading}>Workspaces</h2>
+        <button
+          className={styles.createButton}
+          onClick={() => setDialogOpen(true)}
+        >
+          + Create
+        </button>
+      </div>
+
+      <CreateWorkspaceDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onCreate={handleCreate}
+      />
 
       {data.reachedEnd && data.totalEstimate === 0 ? (
         <p className={styles.empty}>No workspaces yet.</p>

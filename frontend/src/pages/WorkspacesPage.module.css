@@ -8,9 +8,128 @@
   text-align: left;
 }
 
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+  gap: 12px;
+}
+
 .heading {
-  margin: 0 0 16px;
+  margin: 0;
   text-align: center;
+}
+
+.createButton {
+  font-size: 14px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.createButton:hover {
+  background: var(--accent-border);
+  color: var(--bg);
+}
+
+/* ---- Create workspace dialog ---- */
+
+.dialog {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 24px;
+  width: 380px;
+  max-width: 90vw;
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: var(--shadow);
+}
+
+.dialog::backdrop {
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.dialogTitle {
+  margin: 0 0 16px;
+  font-size: 18px;
+  color: var(--text-h);
+}
+
+.dialogLabel {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text);
+  margin-bottom: 6px;
+}
+
+.dialogInput {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 15px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--code-bg);
+  color: var(--text-h);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.dialogInput:focus {
+  border-color: var(--accent);
+}
+
+.dialogError {
+  color: #dc2626;
+  font-size: 13px;
+  margin: 8px 0 0;
+}
+
+.dialogActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.dialogCancel {
+  font-size: 14px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.dialogCancel:hover {
+  background: var(--code-bg);
+}
+
+.dialogSubmit {
+  font-size: 14px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.dialogSubmit:hover {
+  opacity: 0.9;
+}
+
+.dialogSubmit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .listContainer {

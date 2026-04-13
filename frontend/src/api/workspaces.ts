@@ -41,6 +41,20 @@ export const fetchWorkspacePage: FetchPageFn<Workspace, void> = async ({
   return { items: data.items };
 };
 
+export async function createWorkspace(
+  name: string,
+): Promise<Workspace> {
+  const response = await fetch("/api/v1/workspaces/", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to create workspace: ${response.status}`);
+  }
+  return response.json();
+}
+
 export async function deleteWorkspace(
   workspaceId: string,
   signal?: AbortSignal,

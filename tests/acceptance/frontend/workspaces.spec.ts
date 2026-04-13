@@ -111,6 +111,42 @@ test.describe("Workspaces page", () => {
     created = created.filter((id) => id !== created[0]);
   });
 
+  test("create dialog creates a workspace", async ({ page }) => {
+    await page.goto("/workspaces");
+
+    // Open the dialog
+    await page.getByRole("button", { name: "+ Create" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+    await expect(page.getByText("Create workspace")).toBeVisible();
+
+    // Fill in the name and submit
+    await page.getByLabel("Name").fill("ws-from-dialog");
+    await page.getByRole("button", { name: "Create", exact: true }).click();
+
+    // Dialog should close, new card should appear
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+    await expect(page.getByText("ws-from-dialog")).toBeVisible();
+
+    // Track it for cleanup — look up the ID via API
+    const res = await page.request.get(`${API}/?limit=100`);
+    const { items } = await res.json();
+    const ws = items.find((w: any) => w.name === "ws-from-dialog");
+    if (ws) created.push(ws.id);
+  });
+
+  test("create dialog can be cancelled", async ({ page }) => {
+    await page.goto("/workspaces");
+
+    await page.getByRole("button", { name: "+ Create" }).click();
+    await expect(page.getByRole("dialog")).toBeVisible();
+
+    await page.getByLabel("Name").fill("should-not-exist");
+    await page.getByRole("button", { name: "Cancel" }).click();
+
+    await expect(page.getByRole("dialog")).not.toBeVisible();
+    await expect(page.getByText("should-not-exist")).not.toBeVisible();
+  });
+
   test("redirects / to /workspaces", async ({ page }) => {
     await page.goto("/");
     await expect(page).toHaveURL(/\/workspaces/);
