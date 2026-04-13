@@ -1,5 +1,69 @@
 /* pages/WorkspacesPage.module.css */
 .page {
   padding: 16px;
-  
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  text-align: left;
+}
+
+.heading {
+  margin: 0 0 16px;
+}
+
+.listContainer {
+  flex: 1;
+  min-height: 0;
+}
+
+.skeletonGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.empty {
+  color: var(--text);
+  margin-top: 32px;
+  text-align: center;
+}
+
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease;
+}
+
+.card:hover {
+  box-shadow: var(--shadow);
+}
+
+.cardTitle {
+  font-size: 16px;
+  font-weight: 500;
+  color: var(--text-h);
+  margin: 0 0 8px;
+}
+
+.cardMeta {
+  font-size: 13px;
+  color: var(--text);
+  margin: 0;
+}
+
+.placeholder {
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  height: 80px;
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
 }
