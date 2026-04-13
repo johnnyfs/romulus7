@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 
 from fastapi import Depends
+from sqlmodel import select
 from sqlalchemy import DateTime
 from sqlmodel import Field
 
@@ -18,6 +19,10 @@ class Worker(TableBase, table=True):
 class WorkerRepository(Repository[Worker]):
     def __init__(self, session = Depends(get_session)):
         super().__init__(table_model=Worker, session=session)
+
+    async def find_first(self) -> Worker | None:
+        statement = select(self._table_model).where(self._table_model.deleted == False).limit(1)  # noqa: E712
+        return (await self._session.exec(statement)).first()
 
     async def heartbeat_by_id(self, id):
         model = await self.get_by_id(id)

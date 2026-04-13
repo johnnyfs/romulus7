@@ -4,8 +4,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field, field_validator
 
-from app.core.schemas import BaseDeleteResponse, BaseListItem, BaseListResponse, BaseModelResponse
-
 
 class CommandExecutionSpec(BaseModel):
     kind: Literal["command"]
@@ -15,17 +13,10 @@ class CommandExecutionSpec(BaseModel):
 ExecutionSpec = Annotated[CommandExecutionSpec, Field(discriminator="kind")]
 
 
-class ExecutionBase(BaseModel):
-    spec: ExecutionSpec
-
-
-class ExecutionCreateRequest(ExecutionBase):
-    pass
-
-
-class ExecutionDispatchRequest(BaseModel):
+class DispatchRequest(BaseModel):
     sandbox_id: UUID | None = None
     working_directory: str | None = None
+    execution_spec: ExecutionSpec
 
     @field_validator("working_directory")
     @classmethod
@@ -40,17 +31,6 @@ class ExecutionDispatchRequest(BaseModel):
         return str(path)
 
 
-class ExecutionCreateResponse(BaseModelResponse, ExecutionBase):
-    pass
-
-
-class ExecutionListItem(BaseListItem, ExecutionBase):
-    pass
-
-
-class ExecutionListResponse(BaseListResponse[ExecutionListItem]):
-    pass
-
-
-class ExecutionDeleteResponse(BaseDeleteResponse):
-    pass
+class DispatchResponse(BaseModel):
+    id: UUID
+    process_id: int

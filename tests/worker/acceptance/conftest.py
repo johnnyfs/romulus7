@@ -22,8 +22,13 @@ from app.main import app
 
 @pytest_asyncio.fixture
 async def client() -> AsyncIterator[AsyncClient]:
+    app.state.worker_state.id = None
+    app.state.worker_state.commands.clear()
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://testserver",
     ) as test_client:
         yield test_client
+
+    app.state.worker_state.id = None
+    app.state.worker_state.commands.clear()
