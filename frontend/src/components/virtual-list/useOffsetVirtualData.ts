@@ -11,7 +11,7 @@
  * items than `pageSize`, we know no more data exists beyond that point.
  * This works for APIs that don't return a total count.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { OffsetVirtualDataOptions, OffsetVirtualDataResult } from "./types";
 
 export function useOffsetVirtualData<T, Q = void>(
@@ -122,7 +122,9 @@ export function useOffsetVirtualData<T, Q = void>(
     (index: number): T | undefined => {
       const pageNum = Math.floor(index / pageSize);
       const offset = index % pageSize;
-      return pageCache.get(pageNum)?.[offset] as T | undefined;
+      // Fresh data first, fall back to stale data from before invalidation.
+      return (pageCache.get(pageNum)?.[offset]
+        ?? staleCacheRef.current.get(pageNum)?.[offset]) as T | undefined;
     },
     [pageCache, pageSize],
   );
@@ -159,19 +161,59 @@ export function useOffsetVirtualData<T, Q = void>(
     }
   }, [pageCache.size, reachedEnd, pageSize, ensureRangeLoaded]);
 
+  // --- Invalidation (stale-while-revalidate) ---
+  // On invalidate, we snapshot the current cache into a ref so getItem
+  // can keep returning stale data while fresh pages load. This prevents
+  // every card flashing to a placeholder on delete.
+
+  const staleCacheRef = useRef<Map<number, readonly T[]>>(new Map());
+
+  const invalidate = useCallback(() => {
+    setPageCache((prev) => {
+      staleCacheRef.current = prev;
+      return new Map();
+    });
+    setGeneration((g) => g + 1);
+    setReachedEnd(false);
+    setKnownCount(0);
+    setInFlightCount(0);
+  }, []);
+
+  // Clear stale cache once fresh data fully loads.
+  if (reachedEnd && staleCacheRef.current.size > 0) {
+    staleCacheRef.current = new Map();
+  }
+
   // --- Derived values ---
 
   // Don't inflate totalEstimate before the first page loads. This
   // prevents VirtualList from rendering pageSize phantom placeholder
   // rows while the initial fetch is in flight.
   const hasData = pageCache.size > 0 || reachedEnd;
-  const totalEstimate = reachedEnd
+  const rawEstimate = reachedEnd
     ? knownCount
     : hasData
       ? knownCount + pageSize
       : 0;
 
+  // Preserve the last non-zero estimate so totalEstimate doesn't
+  // collapse to 0 during invalidation (which would flash skeleton
+  // state and cause scroll jumps). Resets to 0 only when the server
+  // confirms the list is truly empty (reachedEnd && knownCount === 0).
+  const lastNonZeroEstimateRef = useRef(0);
+  if (rawEstimate > 0) lastNonZeroEstimateRef.current = rawEstimate;
+
+  const totalEstimate =
+    rawEstimate > 0
+      ? rawEstimate
+      : reachedEnd && knownCount === 0
+        ? 0 // truly empty — server confirmed
+        : lastNonZeroEstimateRef.current;
+
   const isLoading = inFlightCount > 0;
 
-  return { getItem, ensureRangeLoaded, totalEstimate, isLoading, reachedEnd };
+  return useMemo(
+    () => ({ getItem, ensureRangeLoaded, totalEstimate, isLoading, reachedEnd, invalidate }),
+    [getItem, ensureRangeLoaded, totalEstimate, isLoading, reachedEnd, invalidate],
+  );
 }

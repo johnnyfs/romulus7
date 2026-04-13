@@ -1,6 +1,10 @@
 .scrollContainer {
-  overflow: auto;
-  height: 100%;
+  overflow-y: auto;
+  scrollbar-width: none;          /* Firefox */
+}
+
+.scrollContainer::-webkit-scrollbar {
+  display: none;                  /* Chrome / Safari / Edge */
 }
 
 .placeholder {

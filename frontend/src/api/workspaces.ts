@@ -40,3 +40,17 @@ export const fetchWorkspacePage: FetchPageFn<Workspace, void> = async ({
   const data: WorkspaceListResponse = await response.json();
   return { items: data.items };
 };
+
+export async function deleteWorkspace(
+  workspaceId: string,
+  signal?: AbortSignal,
+): Promise<{ id: string; deleted: boolean }> {
+  const response = await fetch(`/api/v1/workspaces/${workspaceId}`, {
+    method: "DELETE",
+    signal,
+  });
+  if (!response.ok) {
+    throw new Error(`Failed to delete workspace: ${response.status}`);
+  }
+  return response.json();
+}

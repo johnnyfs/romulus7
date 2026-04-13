@@ -67,6 +67,9 @@ export type OffsetVirtualDataResult<T> = {
 
   /** True once a short page confirms we've seen the entire list. */
   reachedEnd: boolean;
+
+  /** Clear all cached data and refetch from the beginning. */
+  invalidate: () => void;
 };
 
 /**
