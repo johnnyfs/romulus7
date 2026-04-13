@@ -1,9 +1,9 @@
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Query, Request
-from app.core.filters import Filters
 from fastapi.responses import StreamingResponse
 
+from app.api.v1.events.controllers import EventsController
 from app.api.v1.events.models import EventRepository
 from app.api.v1.events.notify_bus import EventNotification, PgNotifyBus
 from app.api.v1.events.schemas import EventCreateRequest, EventCreateResponse, EventListItem, EventListResponse
@@ -22,8 +22,10 @@ async def create_event(
     event_request: EventCreateRequest,
     request: Request,
     repository: EventRepository = Depends(EventRepository),
+    controller: EventsController = Depends(EventsController),
 ) -> EventCreateResponse:
     model = await repository.create(**event_request.model_dump())
+    await controller.handle_created_event(model)
     notify_bus: PgNotifyBus = request.app.state.event_notify_bus
     if not repository.uses_database_notifications():
         await notify_bus.publish_local(
@@ -42,14 +44,12 @@ async def get_events(
     source_type: EventSourceType | None = None,
     source_id: UUID | None = None,
     repository: EventRepository = Depends(EventRepository),
-    filters: Filters = Depends(Filters.from_request),
 ) -> EventListResponse:
     models = await repository.list(
         limit=limit,
         since=since,
         source_type=source_type,
         source_id=source_id,
-        filters=filters,
     )
     items = [EventListItem(**model.model_dump()) for model in models]
     return EventListResponse(items=items, count=len(items))

@@ -113,30 +113,3 @@ async def test_event_contract_rejects_invalid_payload_discriminator(
 
     assert response.status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert any(error["loc"][-1] == "payload" for error in response.json()["detail"])
-
-
-async def test_event_filter_in_and_payload_field(client: AsyncClient, create_event) -> None:
-    event1 = await create_event({
-        "source_type": "dispatch",
-        "source_id": str(uuid4()),
-        "type": "command.stdout",
-        "payload": {"line": "bar", "kind": "command.stdout"},
-    })
-    event2 = await create_event({
-        "source_type": "dispatch",
-        "source_id": str(uuid4()),
-        "type": "command.stdout",
-        "payload": {"line": "qua", "kind": "command.stdout"},
-    })
-    event3 = await create_event({
-        "source_type": "dispatch",
-        "source_id": str(uuid4()),
-        "type": "command.stdout",
-        "payload": {"line": "baz", "kind": "command.stdout"},
-    })
-
-    resp = await client.get(EVENTS_PATH, params={"payload.line.in": "bar,qua", "limit": 10})
-    assert resp.status_code == HTTPStatus.OK
-    items = resp.json()["items"]
-    lines = {e["payload"]["line"] for e in items}
-    assert lines == {"bar", "qua"}

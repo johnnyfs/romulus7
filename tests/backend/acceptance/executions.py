@@ -167,6 +167,7 @@ async def test_execution_dispatch_uses_existing_worker_lease(
     assert response.status_code == HTTPStatus.OK
     assert response.json()["id"] == worker_dispatch_id
     assert response.json()["execution_id"] == execution["id"]
+    assert response.json()["terminated"] is False
     assert response.json()["worker_response"] == {"id": worker_dispatch_id, "process_id": 4242}
     assert captured == {
         "worker_url": worker["url"],
@@ -223,6 +224,7 @@ async def test_execution_dispatch_auto_leases_worker_for_sandbox(
 
     assert response.status_code == HTTPStatus.OK
     assert response.json()["id"] == worker_dispatch_id
+    assert response.json()["terminated"] is False
 
     worker_response = await client.get(f"/api/v1/workers/{worker['id']}")
     sandbox_response = await client.get(f"/api/v1/sandboxes/{sandbox['id']}")
@@ -318,3 +320,53 @@ async def test_execution_delete_cascades_to_dispatches_and_events(
 
     assert dispatch.deleted is True
     assert event.deleted is True
+
+
+async def test_dispatch_terminated_event_marks_dispatch_terminated(
+    client: AsyncClient,
+    create_execution,
+    create_worker,
+    session_factory,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    execution = await create_execution(
+        {
+            "name": "Alpha echo",
+            "spec": {"kind": "command", "command": "echo alpha"},
+        }
+    )
+    await create_worker("http://localhost:9000/")
+    worker_dispatch_id = str(uuid4())
+
+    async def fake_dispatch_to_worker(worker_url: str, payload: dict) -> dict:
+        return {"id": worker_dispatch_id, "process_id": 4242}
+
+    monkeypatch.setattr(
+        "app.api.v1.executions.routers.dispatch_to_worker",
+        fake_dispatch_to_worker,
+    )
+
+    dispatch_response = await client.post(
+        f"{EXECUTIONS_PATH}{execution['id']}/dispatch",
+        json={"sandbox_id": None, "working_directory": None},
+    )
+    assert dispatch_response.status_code == HTTPStatus.OK
+    assert dispatch_response.json()["terminated"] is False
+
+    event_response = await client.post(
+        "/api/v1/events/",
+        json={
+            "source_type": "dispatch",
+            "source_id": worker_dispatch_id,
+            "type": "dispatch.terminated",
+            "payload": {"kind": "dispatch.terminated"},
+        },
+    )
+    assert event_response.status_code == HTTPStatus.OK
+
+    async with session_factory() as session:
+        dispatch = (
+            await session.exec(select(Dispatch).where(Dispatch.id == UUID(worker_dispatch_id)))
+        ).one()
+
+    assert dispatch.terminated is True

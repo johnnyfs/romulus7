@@ -22,6 +22,7 @@ BACKEND_ROOT = REPO_ROOT / "backend"
 if str(BACKEND_ROOT) not in sys.path:
     sys.path.insert(0, str(BACKEND_ROOT))
 
+from app.api.v1.dispatches.routers import app as dispatches_app
 from app.api.v1.executions.routers import app as executions_app
 from app.api.v1.events.routers import app as events_app
 from app.api.v1.events.notify_bus import PgNotifyBus
@@ -32,6 +33,7 @@ from app.core.db import get_session
 from app.main import app
 
 
+DISPATCHES_PATH = "/api/v1/dispatches/"
 EVENTS_PATH = "/api/v1/events/"
 EXECUTIONS_PATH = "/api/v1/executions/"
 HEALTH_PATH = "/api/v1/health/"
@@ -78,6 +80,7 @@ async def client(
             yield session
 
     app.dependency_overrides[get_session] = override_get_session
+    dispatches_app.dependency_overrides[get_session] = override_get_session
     executions_app.dependency_overrides[get_session] = override_get_session
     events_app.dependency_overrides[get_session] = override_get_session
     sandboxes_app.dependency_overrides[get_session] = override_get_session
@@ -94,6 +97,7 @@ async def client(
 
     await notify_bus.close()
     app.dependency_overrides.clear()
+    dispatches_app.dependency_overrides.clear()
     executions_app.dependency_overrides.clear()
     events_app.dependency_overrides.clear()
     sandboxes_app.dependency_overrides.clear()

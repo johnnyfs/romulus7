@@ -20,6 +20,7 @@ class FakeProcess:
     def __init__(self, pid: int):
         self.pid = pid
         self.stdout = None
+        self.stderr = None
 
     async def wait(self) -> int:
         return 0
@@ -82,7 +83,7 @@ async def test_dispatch_runs_command_in_workspace_directory(
     await asyncio.sleep(0)
 
 
-async def test_dispatch_posts_stdout_lines_as_events(
+async def test_dispatch_posts_stdout_and_stderr_lines_as_events(
     client: AsyncClient,
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -99,7 +100,7 @@ async def test_dispatch_posts_stdout_lines_as_events(
 
             await asyncio.sleep(0.01)
 
-        raise AssertionError("dispatch stdout events were not forwarded before timeout")
+        raise AssertionError("dispatch stream events were not forwarded before timeout")
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(
@@ -115,7 +116,11 @@ async def test_dispatch_posts_stdout_lines_as_events(
             "execution_spec": {
                 "kind": "command",
                 "command": shlex.join(
-                    [sys.executable, "-c", "print('alpha'); print('beta')"]
+                    [
+                        sys.executable,
+                        "-c",
+                        "import sys; print('alpha'); print('beta', file=sys.stderr)",
+                    ]
                 ),
             },
             "callback": {
@@ -130,31 +135,7 @@ async def test_dispatch_posts_stdout_lines_as_events(
 
     await wait_for_completion(dispatch_id)
 
-    assert captured_events == [
-        (
-            dispatch_id,
-            str(DispatchEventType.COMMAND_STDOUT),
-            {
-                "kind": "command.stdout",
-                "line": "alpha",
-                "callback": {
-                    "execution_id": "00000000-0000-0000-0000-000000000999",
-                    "execution_name": "Alpha echo",
-                },
-            },
-        ),
-        (
-            dispatch_id,
-            str(DispatchEventType.COMMAND_STDOUT),
-            {
-                "kind": "command.stdout",
-                "line": "beta",
-                "callback": {
-                    "execution_id": "00000000-0000-0000-0000-000000000999",
-                    "execution_name": "Alpha echo",
-                },
-            },
-        ),
+    assert captured_events[2:] == [
         (
             dispatch_id,
             str(DispatchEventType.COMMAND_EXIT),
@@ -172,6 +153,32 @@ async def test_dispatch_posts_stdout_lines_as_events(
             str(DispatchEventType.DISPATCH_TERMINATED),
             {
                 "kind": "dispatch.terminated",
+                "callback": {
+                    "execution_id": "00000000-0000-0000-0000-000000000999",
+                    "execution_name": "Alpha echo",
+                },
+            },
+        ),
+    ]
+    assert sorted(captured_events[:2], key=lambda event: event[1]) == [
+        (
+            dispatch_id,
+            str(DispatchEventType.COMMAND_STDERR),
+            {
+                "kind": "command.stderr",
+                "line": "beta",
+                "callback": {
+                    "execution_id": "00000000-0000-0000-0000-000000000999",
+                    "execution_name": "Alpha echo",
+                },
+            },
+        ),
+        (
+            dispatch_id,
+            str(DispatchEventType.COMMAND_STDOUT),
+            {
+                "kind": "command.stdout",
+                "line": "alpha",
                 "callback": {
                     "execution_id": "00000000-0000-0000-0000-000000000999",
                     "execution_name": "Alpha echo",

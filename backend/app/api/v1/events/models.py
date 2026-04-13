@@ -10,7 +10,6 @@ from app.api.v1.events.notify_bus import EventNotification
 from app.api.v1.events.schemas import EventPayload
 from app.core.config import settings
 from app.core.db import get_session
-from app.core.filters import Filters
 from app.core.models import PydanticJSON
 from common.events import DispatchEventType, EventSourceType
 
@@ -78,7 +77,6 @@ class EventRepository:
         since: int | None = None,
         source_type: EventSourceType | None = None,
         source_id: UUID | None = None,
-        filters: Filters = None,
     ) -> Sequence[Event]:
         statement = self._select()
 
@@ -90,9 +88,6 @@ class EventRepository:
 
         if source_id is not None:
             statement = statement.where(Event.source_id == source_id)
-
-        if filters:
-            statement = filters.apply(statement, Event)
 
         statement = statement.order_by(Event.id).limit(limit or settings.DEFAULT_PAGE_SIZE)
         return (await self._session.exec(statement)).all()

@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.state import worker_state
 from common.events import (
     CommandExitEventPayload,
+    CommandStderrEventPayload,
     CommandStdoutEventPayload,
     DispatchEventType,
     DispatchTerminatedEventPayload,
@@ -39,7 +40,11 @@ async def start_command(
     command: str,
     cwd: Path,
 ) -> asyncio.subprocess.Process:
-    kwargs = {"cwd": str(cwd), "stdout": asyncio.subprocess.PIPE}
+    kwargs = {
+        "cwd": str(cwd),
+        "stdout": asyncio.subprocess.PIPE,
+        "stderr": asyncio.subprocess.PIPE,
+    }
     if os.name == "posix" and sys.platform.startswith("linux"):
         kwargs["preexec_fn"] = _set_parent_death_signal
 
@@ -69,26 +74,43 @@ async def forward_command_output(
     process: asyncio.subprocess.Process,
 ) -> None:
     callback = worker_state.callbacks.get(dispatch_id)
+
+    async def forward_stream(stream, event_type: DispatchEventType, payload_type) -> None:
+        if stream is None:
+            return
+
+        while True:
+            line = await stream.readline()
+            if not line:
+                break
+
+            try:
+                await post_dispatch_event(
+                    client,
+                    dispatch_id,
+                    event_type,
+                    payload_type(
+                        line=line.decode(errors="replace").rstrip("\r\n"),
+                        callback=callback,
+                    ),
+                )
+            except Exception:
+                logger.exception("Failed to post dispatch event for %s", dispatch_id)
+
     try:
         async with httpx.AsyncClient(base_url=settings.BACKEND_URL) as client:
-            if process.stdout is not None:
-                while True:
-                    line = await process.stdout.readline()
-                    if not line:
-                        break
-
-                    try:
-                        await post_dispatch_event(
-                            client,
-                            dispatch_id,
-                            DispatchEventType.COMMAND_STDOUT,
-                            CommandStdoutEventPayload(
-                                line=line.decode(errors="replace").rstrip("\r\n"),
-                                callback=callback,
-                            ),
-                        )
-                    except Exception:
-                        logger.exception("Failed to post dispatch event for %s", dispatch_id)
+            await asyncio.gather(
+                forward_stream(
+                    process.stdout,
+                    DispatchEventType.COMMAND_STDOUT,
+                    CommandStdoutEventPayload,
+                ),
+                forward_stream(
+                    process.stderr,
+                    DispatchEventType.COMMAND_STDERR,
+                    CommandStderrEventPayload,
+                ),
+            )
 
             exit_code = await process.wait()
             try:
